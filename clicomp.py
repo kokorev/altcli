@@ -6,16 +6,16 @@
 не не требуют никакой информации о данных, и используются намного чаще чем cliData
 """
 
-def ampl(d):
+def ampl(d, precision=2):
     """
     Принимает одномерный список.
     вычисляет амплитуды значений списка
     """
     assert type(d[0]) != list
-    return round(abs(max(d) - min(d)), 2)
+    return round(abs(max(d) - min(d)), precision)
 
 
-def sumMoreThen(d, x):
+def sumMoreThen(d, x, precision=2):
     """
     Принимает одномерный список.
     Возвращает сумму значений больше X из списка d
@@ -29,13 +29,13 @@ def sumMoreThen(d, x):
                 r = None
                 break
         else:
-            r = round(sum([m for m in d if m > x and m != None]), 3)
+            r = round(sum([m for m in d if m > x and m != None]), precision)
     else:
-        r = round(sum([m for m in d if m > x]), 3)
+        r = round(sum([m for m in d if m > x]), precision)
     return r
 
 
-def sumLessThen(d, x):
+def sumLessThen(d, x, precision=2):
     """
     Принимает одномерный список.
     Возвращает сумму значений больше X из списка d
@@ -49,24 +49,24 @@ def sumLessThen(d, x):
                 r = None
                 break
         else:
-            r = round(sum([m for m in d if m < x and m != None]), 3)
+            r = round(sum([m for m in d if m < x and m != None]), precision)
     else:
-        r = round(sum([m for m in d if m < x]), 3)
+        r = round(sum([m for m in d if m < x]), precision)
     return r    
 
 
-def avg(d):
+def avg(d, precision=2):
     """
     Принимает одномерный список.
     возвращает среднее значение по списку """
     vals = [m for m in d if m != None]
     if len(vals) > 0:
-        res = round(sum(vals) / float(len(vals)), 3)
+        res = round(sum(vals) / float(len(vals)), precision)
     else:
         res = None
     return res
 
-def movingAvg(dat,time, x, allowNone=0):
+def movingAvg(dat,time, x, allowNone=0, precision=2):
     """
     расчитывет скользящее среднее в окне x Лет
     Принимет:
@@ -92,7 +92,7 @@ def movingAvg(dat,time, x, allowNone=0):
                 d.append(None)
                 t.append(None)
             else:
-                d.append(avg(vals))
+                d.append(avg(vals,precision=precision))
                 t.append(time[i])
     return d,t
 
