@@ -11,6 +11,7 @@ __version__ = '2.0 beta'
 
 from common import *
 import clicomp as cc
+import numpy as np
 
 def saveRes(method):
 	import functools
@@ -38,6 +39,17 @@ def saveRes(method):
 			self.res.update({dictId:result})
 		return result
 	return wrapper
+
+def timeit(method):
+	def timed(*args, **kw):
+		import time
+		ts = time.clock()
+		result = method(*args, **kw)
+		te = time.clock()
+		#print '%r (%r, %r) %2.2f sec' %(method.__name__, args, kw, te-ts)
+		#print '%r %3.3f sec' %(method.__name__, te-ts)
+		return result
+	return timed
 
 def getCacheId(method, *args, **kwargs):
 	"""
@@ -84,7 +96,8 @@ class cliData:
 	"""
 	Класс реализующий функции загрузки и обработки климатических данных не зависящих от их типа
 	"""
-	def __init__(self, meta, gdat=None, cfg=None):
+	@timeit
+	def __init__(self, meta, gdat, cfg=None):
 		"""
 		Для создания объекта надо передать словарь с метоинформацией meta={'ind':20274, 'dt':'temp', ...}
 		и указатель на cfg или массив с данными gdat
@@ -96,6 +109,9 @@ class cliData:
 		self.__name__ = 'cliData'
 		self.res = dict()
 		self.setSeasons = self.cfg.setSeasons
+		self.yearObjects=dict()
+		self.precision=2
+		self.seasonsCache=dict()
 		# Проверяем есть ли в словаре все необходимые значения
 		try:
 			a = meta['ind']
@@ -115,37 +131,50 @@ class cliData:
 			a = meta['yMax']
 		except KeyError:
 			meta['yMax'] = self.cfg.yMax
-
-		# если есть только методанные и указатель на базу
-		if gdat == None and cfg != None:
-			# получаем gdat, если успешно то получаем ещё и методанные и добавляем их в meta.
-			# если данных нет то пишем ошибку в лог и выдаём LookupError
-			try:
-				gdat = self.cfg.get(meta['dt'], meta['ind'], -1, -1, meta['yMin'], meta['yMax'])
-			except LookupError:
-				self.cfg.logThis("no data for st %i; %i<=year<=%i" % (meta['ind'], meta['yMin'], meta['yMax']))
-				self.status = False
-				raise LookupError
-			else:
-				meta.update(self.cfg.getMeta(meta['dt'], meta['ind']))
-		# если данные уже переданы
-		for i, strdat in enumerate(gdat):
-			#print strdat
-			gdat[i][1] = yearData(int(strdat[0]), meta, strdat[1], self.cfg)
-			gdat[i][1].parent = self
-		#
 		self.meta = meta
-		self.data = [v[:2] for v in gdat]
-		self.minInd = 0
-		self.maxInd = len(self.data) - 1
-		self.yList = [y.year for y in self if y.datapass < 100]
-		if len(self.yList) == 0: raise ValueError
+		self.filledValue=-999.99
+		d=[ln for ln in gdat if ln[1].count(None)<12]
+		try:
+			self.data=np.ma.masked_values([strdat[1] for strdat in d], None, copy=True)
+		except TypeError:
+			self.data=np.ma.array([strdat[1] for strdat in d])
+		else:
+			np.place(self.data, np.ma.getmaskarray(self.data), [self.filledValue])
+		self.yList=[strdat[0] for strdat in d]
+		if len(self.yList) == 0: raise ValueError, 'Не пропущенные значения отсутствуют'
+		self.timeInds={y:i for i,y in enumerate(self.yList)}
 		self.yMin, self.yMax = min(self.yList), max(self.yList)
 		if meta['yMin'] == -1: meta['yMin'] = self.yMin
 		if meta['yMax'] == -1: meta['yMax'] = self.yMax
+#		self.minInd = 0
+#		self.maxInd = len(self.yList)
 
 	#TODO: add __deepcopy__ function
 
+	@staticmethod
+	@timeit
+	def load(fn):
+		"""
+		Загружает объект cliDat из файла
+		"""
+		if fn[-4:] != '.acd': fn += '.acd'
+		f = open(fn, 'r')
+		txt = f.read()
+		stxt = txt.split('}')       # отделяем метаинформацию от данных
+		# убирём строчки с коментариями из метоинформации
+		metatxt = '\n'.join([line for line in stxt[0].split('\n') if line.strip()[0] != '#']) + '}'
+		meta = eval(metatxt)
+		dat = []
+		for line in stxt[1].split('\n'):
+			if line == '': continue
+			if line.strip()[0] == '#': continue
+			ln = line.strip()
+			arr = [(float(v) if v != 'None' else None) for v in ln.split('\t')]
+			dat.append([int(arr[0]), arr[1:]])
+		aco = cliData(meta, gdat=dat)
+		return aco
+
+	@timeit
 	def __getitem__(self, item):
 		"""
 		Системная функция отвечающая за обработки оператора []
@@ -159,27 +188,31 @@ class cliData:
 			stop = item.stop if item.stop <= self.yMax else self.yMax
 			for year in range(start, stop):
 				if self[year] == None:continue
-				gdat.append([year, list(self[year].vals)])
+				gdat.append([year, list(self[year].data)])
 			return cliData(dict(self.meta), gdat, cfg=self.cfg)
 		else:
-			try:
-				ind = self.yList.index(item)
-			except ValueError:
-				self.cfg.logThis("нет данных для года " + str(item) + " на станции" + str(self.meta['ind']))
-				#raise IndexError
-				return None
+			if item in self.timeInds:
+				if item in self.yearObjects:
+					val=self.yearObjects[item]
+				else:
+					val=yearData(item,self)
+					self.yearObjects[item]=val
 			else:
-				return self.data[ind][1]
+				self.cfg.logThis("нет данных для года " + str(item) + " на станции" + str(self.meta['ind']))
+				val=yearData(item,self)
+				self.yearObjects[item]=val
+		return val
+
 
 
 	def __iter__(self):
-		self.thisInd = self.minInd
+		self.thisInd = self.yMin
 		return self
 
 
 	def next(self):
-		if self.thisInd > self.maxInd: raise StopIteration
-		ret = self.data[self.thisInd][1]
+		if self.thisInd > self.yMax: raise StopIteration
+		ret = self[self.thisInd]
 		self.thisInd += 1
 		return ret
 
@@ -235,50 +268,121 @@ class cliData:
 	@cache
 	def datapass(self):
 		"""
-		процент пропуска данных 100 - пустой объект, 0 - нет пропусков
-		пропущенным считается год с хотя бы одним пропуском
+		процент пропущенных данных
 		"""
-		gd = len([1 for y in self if y.datapass == 0])
-		setedYearNum = float(self.meta['yMax'] - self.meta['yMin'] + 1)
-		return 100 - (gd / (setedYearNum / 100.0))
+		obs=np.ma.count(self.data)
+		passes=np.ma.count_masked(self.data)
+		return passes/((obs+passes)/100.)
 
 
 	def setPeriod(self, yMin, yMax):
 		yMin = self.meta['yMin'] if (yMin == -1) or (yMin < self.meta['yMin']) else yMin
 		yMax = self.meta['yMax'] if (yMax == -1) or (yMax > self.meta['yMax']) else yMax
-		return yMin, yMax
+		return yMin, yMax, self.timeInds[yMin], self.timeInds[yMax]
+
+
+	def getSeasonsData(self,seasons):
+		"""
+		Кэшируюшая функция получения данных по заданым сезонам
+		может принимать как словарь {'название сезона': [список месяцов]} так и списоко имён сезонов
+		"""
+		res=dict()
+		if type(seasons) is str: seasons=[seasons]
+		if type(seasons) is list: seasons={sn:self.seasonsCache[sn]['mlist'] for sn in seasons}
+		for sname,mlist in seasons.items():
+			if sname in self.seasonsCache and self.seasonsCache[sname]['mlist']!=mlist:
+				# имя сезона есть в списке сохранённых
+				# но списко месяцев для не совпадает с заданым, перезаписываем с предупреждением
+				print 'Warning! season %s will be redefine. Cache will cleaned :-('%sname
+				self.seasonsCache[sname]['mlist']=mlist
+				self.seasonsCache[sname]['dat']=self._calcSeasonData(mlist)
+				self.clearcache()
+			else:
+				# сезон используется впервые, добавляем его в кэш
+				self.seasonsCache[sname]=dict()
+				self.seasonsCache[sname]['mlist']=mlist
+				self.seasonsCache[sname]['dat']=self._calcSeasonData(mlist)
+			# берём значение из кэша
+			res[sname]=self.seasonsCache[sname]['dat']
+		return res
 
 
 	@cache
-	def retS_avgData(self, yMin= -1, yMax= -1, seasToCalc=False):
+	@timeit
+	def _calcSeasonData(self,mlist):
+		"""
+		Возвращает значения за сезон
+		{'название сезона': [массив значений(маскированный), список лет в массиве]}
+		"""
+		seasIndList=[]
+		iStart,iStop=0,len(self.data)
+		sdat=[]
+		sYlist=[]
+		res=np.zeros(len(self.yList))
+		for m in mlist:
+			if 1<=m<=12:
+				seasIndList.append([0,m-1])
+			elif m>12:
+				seasIndList.append([1,m-12-1])
+				if iStop==len(self.data): iStop-=1
+			elif m<0:
+				seasIndList.append([-1,12+m])
+				if iStart==0: iStart+=1
+			else:
+				print mlist
+				raise ValueError, 'Неверно задан сезон'
+		for i in range(0,len(self.data)):
+			if i<iStart or i>=iStop:
+				sdat.append([None for l,mn in seasIndList])
+			else:
+				sdat.append([(self.data[i+l,mn] if self.data.mask[i+l,mn]==False else None) for l,mn in seasIndList])
+		sdatMasked=np.ma.masked_values(sdat, None)
+		np.place(sdatMasked, np.ma.getmaskarray(sdatMasked), [-999.99])
+		return sdatMasked
+
+
+	@cache
+	def getSeasonSeries(self, season, yMin= -1, yMax= -1):
 		"""
 		возвращает ряд средних по сезоном для каждого года в интервале
+		Аллиас устаревшей retS_avgData
 		"""
-		yMin, yMax = self.setPeriod(yMin, yMax)
-		res = {y.year:y.s_avg() for y in self if ((y.year <= yMax) and (y.year >= yMin))} # and (y.datapass == 0)
-		yList = [key for key in res]
-		return res, yList
+		yMin, yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		dat,yList=self.getSeasonsData(season)
+		return [round(d.mean(), self.precision) for d in dat[i1:i2+1]],yList
 
 
-	@cache
-	def retIn2dimArr(self, addNone=False):
-		"""
-		Возвращает все данные в двух одномерных массивах [данные],[время],[даты]
-		Время в сквозной нумерации
-		Для построения графиков, например
-		addNone задаёт должны ли быть пропуски в возвращаемом массиве значений
-		"""
-		from datetime import date
-		dat, time, datearr = [], [], []
-		for y in self:
-			for mn in range(1, 13):
-				if y[mn] != None or addNone: # если значение не пропущено или задана настройка добавление пропусков
-					dat.append(y[mn])
-					time.append(mn + (y.year - self.yMin) * 12)
-					datearr.append(date(y.year, mn, 1))
-		return time, dat, datearr
+
+#	@cache
+#	def retS_avgData(self, yMin= -1, yMax= -1, seasToCalc=False):
+#		"""
+#		возвращает ряд средних по сезоном для каждого года в интервале
+#		"""
+#		yMin, yMax = self.setPeriod(yMin, yMax)
+#		res = {y.year:y.s_avg() for y in self if ((y.year <= yMax) and (y.year >= yMin))} # and (y.datapass == 0)
+#		yList = [key for key in res]
+#		return res, yList
 
 
+#	@cache
+#	def retIn2dimArr(self, addNone=False):
+#		"""
+#		Возвращает все данные в двух одномерных массивах [данные],[время],[даты]
+#		Время в сквозной нумерации
+#		Для построения графиков, например
+#		addNone задаёт должны ли быть пропуски в возвращаемом массиве значений
+#		"""
+#		from datetime import date
+#		dat, time, datearr = [], [], []
+#		for y in self:
+#			for mn in range(1, 13):
+#				if y[mn] != None or addNone: # если значение не пропущено или задана настройка добавление пропусков
+#					dat.append(y[mn])
+#					time.append(mn + (y.year - self.yMin) * 12)
+#					datearr.append(date(y.year, mn, 1))
+#		return time, dat, datearr
+
+	@timeit
 	@cache
 	def norm(self, yMin= -1, yMax= -1):
 		"""
@@ -287,36 +391,31 @@ class cliData:
 		если не заданно расчитываеться за весь период self.data
 		out: res(12)  - нормы за каждый месяц
 		"""
-		yMin, yMax = self.setPeriod(yMin, yMax)
-		res = []
-		for m in range(1, 13):
-			this = [self[year][m] for year in range(yMin, yMax + 1) if self[year] != None] #  self[year].datapass == 0
-			if len(this) > 0:
-				res.append(cc.avg(this))
-			else:
-				res.append(None)
-		return res
+		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		res=np.ma.average(self.data[i1:i2+1,:], axis=0)
+		return [round(v,self.precision) for v in res]
 
 
 	@cache
+	@timeit
 	def s_norm(self, yMin= -1, yMax= -1, seasToCalc=False):
 		"""
 		Расчитывает среднесезонную норму
 		Принимет:
 			yMin, yMax - int, года начала и конца периода расчтё нормы
-			seasToCalc - list, список сезонов по которым нужно расчитать норму (если не нужны все сезоны)
+			seasToCalc - list of str, dict сезоны по которым нужно расчитать норму
 			при использовании данной ф-ии через altCli_calc необходимо указать ТОЛЬКО один сезон, например ['winter']
 		Возвращает:
 			res - dict, значение нормы для каждого сезона {сезон: число, ...}
 		"""
-		if seasToCalc == False:
-			seasToCalc = self.cfg.sortedSeasons
-		yMin, yMax = self.setPeriod(yMin, yMax)
-		res = dict()
-		savgs, yList = self.retS_avgData(yMin, yMax)
-		for s in seasToCalc:
-			sesavg = cc.avg([v[s] for n, v in savgs.items()])
-			res[s] = sesavg
+		if seasToCalc == False:	seasToCalc = [s for s in self.seasonsCache]
+		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		print yMin,yMax,i1,i2
+		sdat=self.getSeasonsData(seasToCalc)
+		res=dict()
+		for sname in seasToCalc:
+			dat=sdat[sname]
+			res[sname]=round(dat[i1:i2+1,:].mean(), self.precision)
 		return res
 
 
@@ -391,6 +490,7 @@ class cliData:
 
 
 	@cache
+	@timeit
 	def anomal(self, norm_yMin, norm_yMax, yMin= -1, yMax= -1):
 		"""
 		Считает аномалии от нормы для каждого месяца каждого года
@@ -400,53 +500,46 @@ class cliData:
 		Возвращает:
 			res - dict, года - ключи словарая, значения - списки аномалий для каждого месяца этого года
 		"""
-		yMin, yMax = self.setPeriod(yMin, yMax)
+		#todo: было бы логичнее было бы использовать np.ma.anom(), но оно не работет осям
+		# обсуждение топика https://github.com/numpy/numpy/issues/2814
+		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
 		normList = self.norm(norm_yMin, norm_yMax)
-		res = dict()
-		for y in range(yMin, yMax + 1):
-			thStr = []
-			for i in range(0, 12):
-				an = round(self[y][i + 1] - normList[i], 2) if self[y][i + 1] != None else None
-				thStr.append(an)
-			res[y] = thStr
-		return res
+		res=[]
+		for y in range(yMin,yMax+1):
+			if y in self.timeInds:
+				i=self.timeInds[y]
+				line=self.data[i]-normList
+				res.append([(round(line[m],self.precision) if self.data.mask[i,m]!=True else self.filledValue) for m in range(12)])
+			else:
+				res.append([self.filledValue]*12)
+		return np.ma.masked_values(res, self.filledValue, copy=True)
 
 
 
 	@cache
-	def s_anomal(self, normMinY, normMaxY, minY= -1, maxY= -1, seasToCalc=False):
+	def s_anomal(self, normMinY, normMaxY, yMin= -1, yMax= -1, seasToCalc=False):
 		"""
 		Считает сезонные аномалии для каждого года
 		Принимает:
 			norm_yMin, norm_yMax - за это период расчитывается норма
 			yMin, yMax - за этот период расчитываются аномалии (по умолчанию весь доступный период)
-			seasToCalc - list, список сезонов по которым нужно расчитать норму (если не нужны все сезоны)
+			seasToCalc - list of str | dict | str список сезонов по которым нужно расчитать норму
 		Возвращает:
 			res - dict, {сезон: {год: [список аномалий за каждый месяц], ...}, ...}
 		"""
-		if seasToCalc == False:
-			seasToCalc = self.cfg.sortedSeasons
-		if type(seasToCalc) == str: seasToCalc = [seasToCalc]
-		if minY == 0:
-			minY = self.yMin
-		if maxY == 0:
-			maxY = self.yMax
-		snorm = self.s_norm(normMinY, normMaxY)
-		yearSeasonAvg, yList = self.retS_avgData(minY, maxY)
-		res = dict()
-		for s in seasToCalc:
-			r = dict()
-			for year, thY in yearSeasonAvg.items():
-				try:
-					r[int(year)] = round(thY[s] - snorm[s], 3)
-				except TypeError:
-					r[int(year)] = None
-			res[s] = r
-		return res #, yList
+		if seasToCalc == False:	seasToCalc = [s for s in self.seasonsCache]
+		sdat=self.getSeasonsData(seasToCalc)
+		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		res=dict()
+		for sname in seasToCalc:
+			norm=self.s_norm(normMinY, normMaxY, seasToCalc=sname)
+			dat=self.getSeasonSeries(sname)
+			res[sname]=[[round(dat[i]-norm, self.precision) for i in range(i1,i2+1)]]
+		return res
 
 
 	@cache
-	def avgAnomal(self, norm_yMin, norm_yMax, yMin= -1, yMax= -1):
+	def meanAnomal(self, norm_yMin, norm_yMax, yMin= -1, yMax= -1):
 		"""
 		 Считает среднемноголетние аномалии для каждого месяца
 		 Принимает:
@@ -454,20 +547,11 @@ class cliData:
 			yMin, yMax - за этот период расчитываются аномалии (по умолчанию весь доступный период)
 		Возвращает:
 			res - list, среднемноголетние аномалии за каждый месяц
-			maxAnom, minAnom - list, максимальная и минимальная аномалия наблюдавщаяся в этом месяце, НЕ по абсолютным значениям
 		"""
-		# TODO: считать не только максимальную аномалию, но и год когда она произошла
-		anom = self.anomal(norm_yMin, norm_yMax, yMin, yMax)
-		res = []
-		maxAnom = []
-		minAnom = []
-		time = range(1, 13)
-		for i in range(0, 12):
-			mdat = [anom[year][i] for year, vals in anom.items()]
-			res.append(cc.avg(mdat))
-			maxAnom.append(max(mdat))
-			minAnom.append(min(mdat))
-		return res, maxAnom, minAnom
+		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		dat=self.anomal(norm_yMin, norm_yMax, yMin, yMax)
+		res=np.ma.average(dat, axis=0)
+		return res
 
 	#TODO: убрать одну из ф-ий trend или trendParam
 	@cache
@@ -600,25 +684,21 @@ class yearData:
 	ф-ии с декоратором @property перед def: возвращают только одно значение
 	и могут вызываться как свойства
 	"""
-	def __init__(self, year, meta, dat, cfg=None):
-		from copy import copy
+	def __init__(self, year, parent):
 		self.__name__ = 'yearData'
 		self.year = year
-		self.stNum = meta['ind']
-		self.cfg = cfg
-		##self.cc=cliComp()
-		self.time = [i for i in range(1, 13)]
-		assert len(dat) == 12
-		self.vals = copy(dat)
-		self.dataType = meta['dt']
+		self.parent = parent
+		if year in parent.timeInds:
+			self.data=parent.data[parent.timeInds[year]]
+		else:
+			self.data=np.ma.masked_values([parent.filledValue]*12, parent.filledValue)
 		self.res = dict()
-		self.parent = None
-		self.status = True
-		self.data = [self.time, self.vals]
+		self.precision=parent.precision
+		self.meta=self.parent.meta
 
 
 	def __str__(self):
-		rList = list(self.vals) # копируем лист!
+		rList = list(self.data) # копируем лист!
 		rList.insert(0, self.year)
 		strList = [str(s) for s in rList]
 		resstr = "\t".join(strList)
@@ -642,8 +722,8 @@ class yearData:
 		else:
 			rmonth = int(month)
 		assert - 13 < rmonth < 25 and rmonth != 0, "номер месяца должен лежать в промежутке от 1 до 12"
-		if 0 < rmonth <= 12:
-			retval = self.vals[rmonth - 1]
+		if 1 <= rmonth <= 12:
+			retval = self.data[rmonth - 1]
 		else :
 			if rmonth >= 13:
 				realMonth = rmonth - 12
@@ -651,16 +731,26 @@ class yearData:
 			elif rmonth < 0:
 				realMonth = 13 + rmonth
 				realYear = int(self.year - 1)
-			#and self.year!=self.parent.realYMin and self.year!=self.parent.realYMax
 			if self.parent != None:
 				try:
 					retval = self.parent[realYear][realMonth]
 				except TypeError:
 					retval = None
 			else:
-				#retval = self.getMonthVal(realYear, realMonth)
 				retval = None
-		return retval
+		return retval if retval!=self.data.fill_value else None
+
+
+	def getSeasonsData(self,seasons):
+		"""
+		Возвращает данные по каждому сезону в виде словаря
+		{'название сезона': [данные по месяцам в хронологическом порядке]}
+		"""
+		res=dict()
+		for sname,mlist in seasons.item():
+			mlist.sort()
+			res[sname]=[self[m] for m in mlist]
+		return res
 
 
 	def __iter__(self):
@@ -681,22 +771,24 @@ class yearData:
 
 	def eq(self, other):
 		""" проверяет объекты на идеентичность данных """
-		return (self.vals == other.vals) and (self.year == other.year) and (self.dataType == other.dataType)
+		return (not False in (self.data == other.data)) and (self.year == other.year)
 
 
 	def getMonthVal(self, year, month):
-		return self.cfg.get(self.dataType, self.meta['ind'], year, month)
+		return self.cfg.get(self.parent.meta['dt'], self.parent.meta['ind'], year, month)
 
 
 	@property
 	def datapass(self):
-		pas = self.vals.count(None)
-		return round(pas / (12 / 100.0))
+		return round(self.missedMonth / (12 / 100.0), self.precision)
 
 
 	@property
-	def passedMonth(self):
-		r = [n + 1 for n, v in enumerate(self.vals) if v == None]
+	def missedMonth(self):
+		if self.data.mask.any():
+			r=sum([1 for v in self.data.mask if v==True])
+		else:
+			r=0
 		return r
 
 
@@ -704,78 +796,84 @@ class yearData:
 		"""
 		Расчитывает амплитуду по сезонам
 		"""
-		seasons = self.cfg.seasons
-		if seasToCalc == False:
-			seasToCalc = [key for key in seasons]
-		results = dict()
-		for k in seasToCalc:
-			sList = seasons[k]
-			values = [self[i] for i in sList if self[i] != None]
-			if len([i for i in values if type(i) == bool]) == 0:
-				res = cc.ampl(values)
+		res=dict()
+		if seasToCalc==False: seasToCalc=[sn for sn in self.parent.seasonsCache]
+		dat=self.parent.getSeasonsData(seasToCalc)
+		yInd=self.parent.timeInds[self.year]
+		for sname in seasToCalc:
+			if dat[sname][yInd].mask.any():
+				res[sname]=None
 			else:
-				res = False
-			results[k] = round(res, 2)
-		return results
+				res[sname]=cc.ampl(dat[sname][yInd],precision=self.precision)
+		return res
 
 
 	@property
 	def ampl(self):
-		""" декорированая ф-я, возвращает амплитуду значений за данный год """
-		values = [i for i in self.vals if i != None]
-		return cc.ampl(values)
+		""" возвращает амплитуду значений за данный год """
+		if self.data.mask.any():
+			r=None
+		else:
+			vals=[v if not m else None for v,m in zip(self.data,self.data.mask)]
+			r=cc.ampl(vals)
+		return r
 
 
-	def s_avg(self, sesTocalc=False):
+	def s_avg(self, seasToCalc=False):
 		""" возвращает среднюю температуру за каждый сезон """
-		results = dict()
-		for k in self.cfg.seasons:
-			sList = self.cfg.seasons[k]
-			values = [self[i] for i in sList if self[i] != None]
-			if len(sList) == len(values):
-				res = round(sum(values) / len(values), 2)
+		res=dict()
+		if seasToCalc==False: seasToCalc=[sn for sn in self.parent.seasonsCache]
+		dat=self.parent.getSeasonsData(seasToCalc)
+		yInd=self.parent.timeInds[self.year]
+		for sname in seasToCalc:
+			if dat[sname][yInd].mask.any():
+				res[sname]=None
 			else:
-				res = None
-			results[k] = res
-		return results
+				res[sname]=cc.avg(dat[sname][yInd],precision=self.precision)
+		return res
 
 
 	@property
 	def avg(self):
-		""" декорированая ф-я, возвращает среднегодовую температуру """
-		if self.datapass == 0:
-			r = cc.avg(self.vals)
+		""" возвращает среднегодовую температуру """
+		if self.missedMonth==0:
+			r=round(self.data.mean(),self.precision)
 		else:
-			r = None
+			r=None
 		return r
 
 
 	@saveRes
 	def sumMoreThen(self, x):
 		""" Возвращает сумму значений больше X """
-		return cc.sumMoreThen(self.vals, x)
+		r=cc.sumMoreThen([v if not m else None for v,m in zip(self.data, self.data.mask)],x,precision=self.precision)
+		return r
 
 
 	@saveRes
 	def sumLessThen(self, x):
 		""" Возвращает сумму значений больше X """
-		return cc.sumLessThen(self.vals, x)
+		r=cc.sumLessThen([v if not m else None for v,m in zip(self.data, self.data.mask)],x,precision=self.precision)
+		return r
 
 
 	@saveRes
 	def s_sumMoreThen(self, x, seasToCalc=False):
 		""" Возвращает кортеж значений больше Х для каждого сезона """
-		seasons = self.cfg.seasons
-		if seasToCalc == False:
-			seasToCalc = [key for key in seasons]
-		results = []
-		for k in seasToCalc:
-			sList = seasons[k]
-			values = [self[i] for i in sList if self[i] != None]
-			if len([i for i in values if type(i) == bool]) == 0:
-				res = cc.sumMoreThen(values, x)
+		res=dict()
+		if seasToCalc==False: seasToCalc=[sn for sn in self.parent.seasonsCache]
+		dat=self.parent.getSeasonsData(seasToCalc)
+		yInd=self.parent.timeInds[self.year]
+		for sname in seasToCalc:
+			if dat[sname][yInd].mask.any():
+				res[sname]=None
 			else:
-				res = False
-			results.append(res)
-		return results
+				res[sname]=cc.sumMoreThen(dat[sname][yInd],x, precision=self.precision)
+		return res
+
+if __name__ == "__main__":
+	acd=cliData.load('test')
+	res,yList=acd.anomal(1961,1990)
+	#{'summer':-0.542, 'winter':-29.51, 'year':-16.095}
+	#print acd.s_norm(1961,1964, {"year": range(1, 13), "summer": [6, 7, 8], "winter": [-1, 1, 2]})
 
