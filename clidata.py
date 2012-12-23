@@ -157,14 +157,14 @@ class cliData:
 		"""
 		if fn[-4:] != '.acd': fn += '.acd'
 		f = open(fn, 'r')
-		txt = f.read()
-		stxt = txt.split('}')       # отделяем метаинформацию от данных
 		# убирём строчки с коментариями из метоинформации
-		metatxt = '\n'.join([line for line in stxt[0].split('\n') if line.strip()[0] != '#']) + '}'
+		txt = '\n'.join([line for line in f.readlines() if line.strip()[0]!='#'])
+		stxt = txt.split('}')       # отделяем метаинформацию от данных
+		metatxt = '\n'.join([line for line in stxt[0].split('\n')]) + '}'
 		meta = eval(metatxt)
 		dataInd=1
 		if len(stxt)==3 and results:
-			restxt = '\n'.join([line for line in stxt[0].split('\n') if line.strip()[0] != '#']) + '}'
+			restxt = '\n'.join([line for line in stxt[0].split('\n')]) + '}'
 			res = eval(restxt)
 			dataInd=2
 		else:
@@ -172,7 +172,6 @@ class cliData:
 		dat = []
 		for line in stxt[dataInd].split('\n'):
 			if line == '': continue
-			if line.strip()[0] == '#': continue
 			ln = line.strip()
 			arr = [(float(v) if v != 'None' else None) for v in ln.split('\t')]
 			dat.append([int(arr[0]), arr[1:]])
