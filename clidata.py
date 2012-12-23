@@ -96,7 +96,6 @@ class cliData:
 	"""
 	Класс реализующий функции загрузки и обработки климатических данных не зависящих от их типа
 	"""
-	@timeit
 	def __init__(self, meta, gdat, cfg=None):
 		"""
 		Для создания объекта надо передать словарь с метоинформацией meta={'ind':20274, 'dt':'temp', ...}
@@ -152,7 +151,6 @@ class cliData:
 	#TODO: add __deepcopy__ function
 
 	@staticmethod
-	@timeit
 	def load(fn):
 		"""
 		Загружает объект cliDat из файла
@@ -248,13 +246,12 @@ class cliData:
 		возвращает self==other (аналог __eq__)
 		"""
 		if self.yList != other.yList:
-			return False
-		for y in self.yList:
-			if self[y].eq(other[y]) == False:
-				break
+			r=False
+		if self.data!=other.data:
+			r=False
 		else:
-			return True
-		return False
+			r=True
+		return r
 
 
 	def clearcache(self):
@@ -308,7 +305,6 @@ class cliData:
 
 
 	@cache
-	@timeit
 	def _calcSeasonData(self,mlist):
 		"""
 		Возвращает значения за сезон
@@ -352,37 +348,21 @@ class cliData:
 		return [round(d.mean(), self.precision) for d in dat[i1:i2+1]],yList
 
 
+	def getParamSeries(self,functName, params=[], yMin=-1, yMax=-1, converter=None):
+		"""
+		Возвращает ряд значенией functName(*params) для каждого экземпляра yearData
+		в интервале yMin - yMax
+		"""
+		yMin, yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		res=[],[]
+		for yobj in self[yMin:yMax]:
+			f = getattr(yobj, functName)
+			r=f(*params)
+			if converter is not None: r=converter(r)
+			res.append(r)
+		return res
 
-#	@cache
-#	def retS_avgData(self, yMin= -1, yMax= -1, seasToCalc=False):
-#		"""
-#		возвращает ряд средних по сезоном для каждого года в интервале
-#		"""
-#		yMin, yMax = self.setPeriod(yMin, yMax)
-#		res = {y.year:y.s_avg() for y in self if ((y.year <= yMax) and (y.year >= yMin))} # and (y.datapass == 0)
-#		yList = [key for key in res]
-#		return res, yList
 
-
-#	@cache
-#	def retIn2dimArr(self, addNone=False):
-#		"""
-#		Возвращает все данные в двух одномерных массивах [данные],[время],[даты]
-#		Время в сквозной нумерации
-#		Для построения графиков, например
-#		addNone задаёт должны ли быть пропуски в возвращаемом массиве значений
-#		"""
-#		from datetime import date
-#		dat, time, datearr = [], [], []
-#		for y in self:
-#			for mn in range(1, 13):
-#				if y[mn] != None or addNone: # если значение не пропущено или задана настройка добавление пропусков
-#					dat.append(y[mn])
-#					time.append(mn + (y.year - self.yMin) * 12)
-#					datearr.append(date(y.year, mn, 1))
-#		return time, dat, datearr
-
-	@timeit
 	@cache
 	def norm(self, yMin= -1, yMax= -1):
 		"""
@@ -397,7 +377,6 @@ class cliData:
 
 
 	@cache
-	@timeit
 	def s_norm(self, yMin= -1, yMax= -1, seasToCalc=False):
 		"""
 		Расчитывает среднесезонную норму
@@ -410,7 +389,6 @@ class cliData:
 		"""
 		if seasToCalc == False:	seasToCalc = [s for s in self.seasonsCache]
 		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
-		print yMin,yMax,i1,i2
 		sdat=self.getSeasonsData(seasToCalc)
 		res=dict()
 		for sname in seasToCalc:
@@ -419,9 +397,28 @@ class cliData:
 		return res
 
 
+	#TODO: написать юниттесты для ф-ий trend и trendParam
 	@cache
-	#TODO: resInList используется неправлиьно, исправить
-	def trendParam(self, funct, param, yMin, yMax, converter=None):
+	def trend(self, yMin= -1, yMax= -1, precision=None):
+		"""
+		 Ф-я рассчитывает наклон многолетнего тренда среднегодовой температуры
+		 Возвращает наклон, ряд значений среднегодовой температуры, ряд времени
+		 Послдение два возвращаемых значений можно использовать для расчёта
+		 slope, intercept, r_value, p_value, std_err = stats.linregress(time,res)
+		"""
+		from scipy import stats
+		from math import isnan
+		if precision is None: precision=self.precision+2
+		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		res=np.ma.average(self.data[i1:i2+1,:], axis=1)
+		time=self.yList[i1:i2+1]
+		slope, intercept, r_value, p_value, std_err = stats.linregress(time, res)
+		if isnan(slope): slope = None
+		return round(slope, precision), round(intercept,precision), res.round(self.precision), time
+
+
+	@cache
+	def trendParam(self, functName, params, yMin, yMax, converter=None, precision=None):
 		"""
 		расчитывает межгодовой тренд какого-либо параметра
 		принимает:
@@ -439,58 +436,17 @@ class cliData:
 			res,time - list, одномерные массивы по которым был расчитан тренд
 		"""
 		from scipy import stats
-		vals, time = [], []
-		for y in range(yMin, yMax + 1):
-			yobj = self[y]
-			if yobj != None:
-				f = getattr(yobj, funct)
-				res = f(*param)
-				if converter is not None:
-					res=converter(res)
-				if res is not None or res != False:
-					vals.append(res)
-					time.append(y)
-		vals=[v for t,v in zip(time,vals) if v!=None]
-		time=[t for t,v in zip(time,vals) if v!=None]
-		slope, intercept, r_value, p_value, std_err = stats.linregress(time, vals)
-		return slope, (intercept, r_value, p_value, std_err), vals, time
-
+		from math import isnan
+		if precision is None: precision=self.precision+2
+		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		res=self.getParamSeries(functName, params, yMin, yMax, converter)
+		time=self.yList[i1:i2+1]
+		slope, intercept, r_value, p_value, std_err = stats.linregress(time, res)
+		if isnan(slope): slope = None
+		return round(slope, precision), round(intercept,precision), res.round(self.precision), time
 
 
 	@cache
-	def s_trend(self, yMin= -1, yMax= -1, seasToCalc=False):
-		"""
-		расчитывает многолетний тренд сезонной температуры
-		Принимет:
-			yMin, yMax - int, года начала и конца периода расчтё нормы
-			seasToCalc - list, список сезонов по которым нужно расчитать норму (если не нужны все сезоны)
-		Возвращает:
-			res - dict, словарь со значениями для каждого сезона {сезон: (slope, intercept, r_value, p_value, std_err),...}
-			где:
-				slope - float, slope of the regression line
-				intercept - float, intercept of the regression line
-				r-value - float, correlation coefficient
-				p-value - float, two-sided p-value for a hypothesis test whose null hypothesis is that the slope is zero.
-				stderr - float, Standard error of the estimate
-		"""
-		import math
-		from scipy import stats
-		if seasToCalc == False:
-			seasToCalc = self.cfg.sortedSeasons
-		yMin, yMax = self.setPeriod(yMin, yMax)
-		yearSeasonAvg, yList = self.retS_avgData(yMin, yMax)
-		res = dict()
-		for s in seasToCalc:
-			dat = [yearSeasonAvg[key][s] for key in yearSeasonAvg if yearSeasonAvg[key][s] != None]
-			ylst = [y for key, y in zip(yearSeasonAvg, yList) if yearSeasonAvg[key][s] != None]
-			slope, intercept, r_value, p_value, std_err = stats.linregress(ylst, dat)
-			if math.isnan(slope):slope = None
-			res[s] = (slope, intercept, r_value, p_value, std_err)
-		return res
-
-
-	@cache
-	@timeit
 	def anomal(self, norm_yMin, norm_yMax, yMin= -1, yMax= -1):
 		"""
 		Считает аномалии от нормы для каждого месяца каждого года
@@ -552,124 +508,6 @@ class cliData:
 		dat=self.anomal(norm_yMin, norm_yMax, yMin, yMax)
 		res=np.ma.average(dat, axis=0)
 		return res
-
-	#TODO: убрать одну из ф-ий trend или trendParam
-	@cache
-	def trend(self, yMin= -1, yMax= -1):
-		"""
-		 Ф-я рассчитывает наклон многолетнего тренда среднегодовой температуры
-		 Возвращает наклон, ряд значений среднегодовой температуры, ряд времени
-		 Послдение два возвращаемых значений можно использовать для расчёта
-		 slope, intercept, r_value, p_value, std_err = stats.linregress(time,res)
-		"""
-		from scipy import stats
-		yMin, yMax = self.setPeriod(yMin, yMax)
-		res, time = [], []
-		for tr, tt in [[self[y].avg, y] for y in range(yMin, yMax + 1) if self[y] != None]:
-			if tr != None:
-				res.append(tr)
-				time.append(tt)
-		if len(res) < 15:
-			return [False, False, False, False]
-		else:
-			slope, intercept, r_value, p_value, std_err = stats.linregress(time, res)
-		return slope, intercept, res, time
-
-
-	@cache
-	def trendMatrix(self, minTrlen=20, season={'year':range(1, 13)}):
-		"""
-		Расчитывает матрицу зависимости велечины тренда от года начала тренда и его длинны
-		Возвращает три двумерные numPy массива x,y,z
-		"""
-		import numpy as np
-		from scipy import stats
-		self.cfg.setSeasons(season)
-		sesname = season.keys()[0]
-		y = range(self.yMin, self.yMax + 1)
-		y_minLim = self.yMin
-		y_maxLim = self.yMax - minTrlen
-		x_minLim = minTrlen
-		x_maxLim = self.yMax - self.yMin
-		y.reverse()
-		ty = []
-		for yStart in range(y_minLim, y_maxLim + 1): # для каждого года начала
-			tx = []
-			for trLen in range(x_minLim, x_maxLim + 1) : # для каждой проболжительности тренда
-				if (yStart + trLen) <= self.yMax:
-					slope, intercept, r_value, p_value, std_err = self.s_trend(yStart, (yStart + trLen))[sesname]
-				else:
-					slope = 0
-				yi = yStart - y_minLim
-				xi = trLen - x_minLim
-				tx.append(slope)
-			ty.append(tx)
-		x = np.array([[tl for tl in range(x_minLim, x_maxLim + 1)] for tyear in range(self.yMin, (self.yMax - minTrlen) + 1)])
-		y = np.array([[tyear for tl in range(x_minLim, x_maxLim + 1)] for tyear in range(self.yMin, (self.yMax - minTrlen) + 1)])
-		z = np.array(ty)
-		return x, y, z
-
-	@cache
-	def std(self, yMin= -1, yMax= -1):
-		"""
-		Считает стандартное отклонение
-		Принимает:
-			yMin, yMax - период расчёта (по умолчанию весь доступный период)
-		Возвращает:
-			ndarray, standard deviation, a measure of the spread of a distribution, of the array elements
-		"""
-		from numpy import std
-		#minY, maxY, minInd, maxInd = self.minmaxInd(minY, maxY)
-		yMin, yMax = self.setPeriod(yMin, yMax)
-		return std([self[year].avg for year in range(yMin, yMax + 1) if self[year] != None and self[year].datapass == 0])
-
-	@cache
-	def s_changePoint(self, mpr=30, mintr=0.008, minlen=20, seasToCalc=False):
-		"""
-		находит критическую точку
-		"""
-		from scipy.stats import ks_2samp
-		from scipy import stats
-		if seasToCalc == False:
-			if len(self.cfg.seasons) > 1:
-				raise ValueError, "если в cfg.seasons > 1 сезона то seasToCalc должен быть задан"
-			elif len(self.cfg.seasons) == 1:
-				seasToCalc = self.cfg.seasons.keys()[0]
-		vals, years = self.retS_avgData(seasToCalc=seasToCalc)
-		vals = [v[seasToCalc] for k, v in vals.items()]
-		nvals = [v for v in vals if v != None]
-		oldnums = [i for i, x in enumerate(vals) if x != None]
-		avgv = sum(nvals) / len(nvals)
-		cs = []
-		csum = 0
-		for v in nvals:
-			csum = csum + (avgv - v)
-			cs.append(csum)
-		rescs = max([abs(p) for p in [max(cs), min(cs)] if p != None])
-		try:
-			rescsind = cs.index(rescs)
-		except ValueError:
-			rescsind = cs.index(rescs * -1)
-		#point = oldnums[rescsind]
-		point = years[oldnums[rescsind]]
-		##if abs(point-len(vals))<10 or point<10: point=None
-		vals1, vals2 = nvals[:rescsind], nvals[rescsind:]
-		time1, time2 = oldnums[:rescsind], oldnums[rescsind:]
-		if len(vals1) < minlen or len(vals2) < minlen:
-			point, zn, kstest, pvalue = None, None, None, None
-			slope1, slope2 = None, None
-		else:
-			slope1, intercept1, r_value1, p_value1, std_err1 = stats.linregress(time1, vals1)
-			slope2, intercept3, r_value2, p_value2, std_err2 = stats.linregress(time2, vals2)
-			#if max([abs(slope1), abs(slope2)]) < mintr: point = None
-			#if (abs(slope1) / 100) * (100 + mpr) > abs(slope2) > (abs(slope1) / 100) * (100 - mpr): point = None
-			if slope1 > slope2:
-				zn = -1
-			else:
-				zn = 1
-			kstest, pvalue = ks_2samp(vals1, vals2)
-		return point, zn, kstest, pvalue, slope1, slope2
-
 
 
 class yearData:
@@ -873,7 +711,9 @@ class yearData:
 
 if __name__ == "__main__":
 	acd=cliData.load('test')
-	res,yList=acd.anomal(1961,1990)
+	res=acd.anomal(1961,1990)
+	#print res
+	print acd.trend()
 	#{'summer':-0.542, 'winter':-29.51, 'year':-16.095}
 	#print acd.s_norm(1961,1964, {"year": range(1, 13), "summer": [6, 7, 8], "winter": [-1, 1, 2]})
 
