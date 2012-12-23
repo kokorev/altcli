@@ -151,9 +151,9 @@ class cliData:
 	#TODO: add __deepcopy__ function
 
 	@staticmethod
-	def load(fn):
+	def load(fn, results=False):
 		"""
-		Загружает объект cliDat из файла
+		Загружает объект cliDat из файла *.acd
 		"""
 		if fn[-4:] != '.acd': fn += '.acd'
 		f = open(fn, 'r')
@@ -162,15 +162,42 @@ class cliData:
 		# убирём строчки с коментариями из метоинформации
 		metatxt = '\n'.join([line for line in stxt[0].split('\n') if line.strip()[0] != '#']) + '}'
 		meta = eval(metatxt)
+		dataInd=1
+		if len(stxt)==3 and results:
+			restxt = '\n'.join([line for line in stxt[0].split('\n') if line.strip()[0] != '#']) + '}'
+			res = eval(restxt)
+			dataInd=2
+		else:
+			res=dict()
 		dat = []
-		for line in stxt[1].split('\n'):
+		for line in stxt[dataInd].split('\n'):
 			if line == '': continue
 			if line.strip()[0] == '#': continue
 			ln = line.strip()
 			arr = [(float(v) if v != 'None' else None) for v in ln.split('\t')]
 			dat.append([int(arr[0]), arr[1:]])
 		aco = cliData(meta, gdat=dat)
+		aco.res=res
 		return aco
+
+
+	def save(self,fn, replace=False, results=False):
+		"""
+		Сохраняет объект cliData в файл *.acd
+		"""
+		import os
+		if fn[-4:] != '.acd': fn += '.acd'
+		if os.path.exists(fn):
+			if replace == False:
+				raise IOError, 'File %s already exist. Change file name or use replace=True argument' % fn
+		r = str(self.meta) + '\n'
+		if results and len(self.res)>0:
+			r+=str(self.res) + '\n'
+		for y in self:
+			r += str(y)
+		f = open(fn, 'w')
+		f.write(r)
+		f.close()
 
 	@timeit
 	def __getitem__(self, item):
@@ -247,7 +274,10 @@ class cliData:
 		"""
 		if self.yList != other.yList:
 			r=False
-		if self.data!=other.data:
+#		print self.data
+#		print other.data
+#		print self.data!=other.data
+		if (self.data!=other.data).any():
 			r=False
 		else:
 			r=True
@@ -538,7 +568,7 @@ class yearData:
 	def __str__(self):
 		rList = list(self.data) # копируем лист!
 		rList.insert(0, self.year)
-		strList = [str(s) for s in rList]
+		strList = [str(s) if str(s)!='--' else 'None' for s in rList]
 		resstr = "\t".join(strList)
 		resstr = resstr + "\n"
 		return resstr
