@@ -8,7 +8,6 @@
 """
 __author__ = 'Vasily Kokorev'
 __email__ = 'vasilykokorev@gmail.com'
-__version__ = '2.0 beta'
 
 from clidata import *
 
@@ -44,11 +43,13 @@ class metaData:
 	"""
 	класс для работы с наборами метеостанций
 	реализует различные ф-ии выборки метеостанций - по гео. положению, по длинне рядов и т.п.
-	большинство ф-й возвращают self.stList который содержит список обектов metaSt
+	большинство ф-й возвращают self.stInds который содержит список обектов metaSt
 	"""
 	def __init__(self, meta, cfgObj=None):
-		self.stList = []
 		self.__name__ = 'metaData'
+		self.clidatObjects=dict()
+		self.stInds=list()
+		self.stMeta=dict()
 		try:
 			meta['dt'] = cfg.elSynom[meta['dt']]
 		except KeyError:
@@ -57,8 +58,34 @@ class metaData:
 		self.meta = meta
 		self.cfg = cfgObj if cfgObj != None else config()
 		self.minInd = 0
-		self.maxInd = len(self.stList)
+		self.maxInd = len(self.stInds)
 
+	@staticmethod
+	def load(fn):
+		import os.path
+		if fn[-4:] != '.acl': fn += '.acl'
+		abspath = os.path.abspath(fn)
+		pth, filename = os.path.split(abspath)
+		f = open(fn, 'r')
+		# убирём строчки с коментариями из метоинформации
+		txt = '\n'.join([line for line in f.readlines() if line.strip()[0]!='#'])
+		stxt = txt.split('}')       # отделяем метаинформацию от данных
+		meta = eval(stxt[0] + '}')
+		cliDataList=list()
+		for source in [l.strip() for l in stxt[1].split(',')]:
+			if not os.path.isabs(source):
+				source=pth+os.sep+source
+			try:
+				cdo=cliData.load(source)
+				cliDataList.append(cdo)
+			except IOError:
+				raise IOError, 'fail to load %s'%source
+		cfg = config()
+		cfg.get = None # Зануляем ф-ю загрузки новых данных
+		cfg.getMeta = None # И ф-ю загрузки методанных
+		acl = metaData(meta)
+		acl.addSt(cliDataList)
+		return acl
 
 	def __getitem__(self, ind):
 		"""
@@ -67,13 +94,10 @@ class metaData:
 		"""
 		if type(ind)!=int: ind = int(ind)
 		try:
-			slist = [s.meta['ind'] for s in self.stList]
-			i = slist.index(ind)
-		except ValueError:
-			self.cfg.logThis("Станции " + str(ind) + " нет в списке")
-			return False
-		else:
-			return self.stList[i]
+			cdo=self.clidatObjects[ind]
+		except KeyError:
+			raise KeyError, "Станции %i нет в списке"%ind
+		return cdo
 
 
 	def __delitem__(self, ind):
@@ -82,20 +106,16 @@ class metaData:
 		Удаяет из объекта metaData станцию с индексом ind
 		возвращает self
 		"""
-		assert type(ind) is int , "in metaData[ind] ind must be an integer"
+		if type(ind)!=int: ind = int(ind)
 		try:
-			slist = [s.meta['ind'] for s in self.stList]
-			i = slist.index(ind)
-		except ValueError:
-			self.cfg.logThis("Станции " + str(ind) + " нет в списке")
-			return False
-		else:
-			del self.stList[i]
-			self.maxInd = len(self.stList)
-			return True
+			del self.clidatObjects[ind]
+			self.stInds.remove(ind)
+		except KeyError, ValueError:
+			raise KeyError, "Станции %i нет в списке"%ind
+		return True
 
 	def __len__(self):
-		return len(self.stList)
+		return len(self.stInds)
 
 	def __iter__(self):
 		self.thisInd = self.minInd
@@ -103,57 +123,31 @@ class metaData:
 
 
 	def next(self):
-		if self.thisInd >= len(self.stList): raise StopIteration
-		ret = self.stList[self.thisInd]
+		if self.thisInd >= len(self.stInds): raise StopIteration
+		ret = self.stInds[self.thisInd]
 		self.thisInd += 1
-		return ret
+		return self.clidatObjects[ret]
 
-	#=================
 
-	def addStToList(self, stListToAdd, meta):
+	def addSt(self, stListToAdd):
 		""" добавляет станции в self.stList если их ещё там нет """
-		try:
-			yMin, yMax = meta['yMin'], meta['yMax']
-		except KeyError:
-			yMin, yMax = self.cfg.yMin, self.cfg.yMax
-			meta['yMin'], meta['yMax'] = yMin, yMax
-		dataTypesList = self.cfg.dtList
-		stToAdd = list(set(stListToAdd) - set([s.ind for s in self.stList]))
-		for st in stToAdd:
-			try:
-				m = dict(meta)
-				m.update({'ind':int(st)})
-				r = createCliDat(m, gdat=None, cfg=self.cfg)
-			except LookupError:
-				continue # отсутствие данных записывается в лог уровнем ниже при попытке создания экземпляра cliData
-			else:
-				self.stList.append(r)
-		self.maxInd = len(self.stList)
-		return self.stList
+		for st in stListToAdd:
+			ind=st.meta['ind']
+			if ind not in self.stInds:
+				self.clidatObjects[int(ind)]=st
+				self.stInds.append(int(ind))
+				self.stMeta[int(ind)]=st.meta
+		self.maxInd = len(self.stInds)
+		return self.stInds
 
 	def __str__(self):
 		"""
 		ф-я обработки объекта этого класса ф-й str()? возвращает список станций через табуляцию
 		"""
 		res = ""
-		for s in self.stList:
+		for s in self.stInds:
 			res += str(s.meta['ind']) + '\t'
 		return res
-
-
-	def getByCond(self, cond=''):
-		"""
-		Выбора по из базы по собственному условию
-		возвращается список станций, атоматически с этим спиком станций ничего не происходит.
-		Запрос пока не экранируеться
-		"""
-		if cond != False: cond = 'WHERE ' + cond
-		#TODO экранирование
-		q = "SELECT ind FROM `" + self.cfg.di.meta + "` " + cond
-		self.cfg.di.c.execute("SELECT ind FROM `" + self.cfg.di.meta + "`")
-		lst = self.cfg.di.c.fetchall()
-		lstr = [int(s[0]) for s in lst]
-		return lstr
 
 
 	def findXnearest(self, x, lat, lon, yMin=0, yMax=0):
@@ -169,95 +163,27 @@ class metaData:
 		res = sorted(res, key=lambda a:a[0])
 		return res[:x]
 
-	@staticmethod
-	def calcDist(lat1, lon1, lat2, lon2):
-		"""
-		ф-я расчёта растояния и азиматульного угла между двумя точками по их гео координатам
-		растояние считаетсья в метрах, результат округляеться до целых метров ф-ей int()
-		"""
-		import math
-		rad = 6372795. # радиус сферы (Земли)
-		#косинусы и синусы широт и разницы долгот
-		cl1 = math.cos(lat1 * math.pi / 180.)
-		cl2 = math.cos(lat2 * math.pi / 180.)
-		sl1 = math.sin(lat1 * math.pi / 180.)
-		sl2 = math.sin(lat2 * math.pi / 180.)
-		##delta = lon2*math.pi/180. - lon1*math.pi/180.
-		cdelta = math.cos(lon2 * math.pi / 180. - lon1 * math.pi / 180.)
-		sdelta = math.sin(lon2 * math.pi / 180. - lon1 * math.pi / 180.)
-		#вычисления длины большого круга
-		y = math.sqrt(math.pow(cl2 * sdelta, 2) + math.pow(cl1 * sl2 - sl1 * cl2 * cdelta, 2))
-		x = sl1 * sl2 + cl1 * cl2 * cdelta
-		ad = math.atan2(y, x)
-		dist = ad * rad
-		#вычисление начального азимута
-		x = (cl1 * sl2) - (sl1 * cl2 * cdelta)
-		y = sdelta * cl2
-		z = math.degrees(math.atan(-y / x))
-		if (x < 0):
-			z = z + 180.
-		z2 = (z + 180.) % 360. - 180.
-		z2 = -math.radians(z2)
-		anglerad2 = z2 - ((2 * math.pi) * math.floor((z2 / (2 * math.pi))))
-		angledeg = (anglerad2 * 180.) / math.pi
-		return int(dist), round(angledeg, 2)
 
-	@staticmethod
-	def setPolygon(polyFileName):
+	def setStInShape(self,shpfile):
 		"""
-		вспмогательная ф-я, читает файл с полигоном в список вида [[x1,y1],[x2,y3]...[xN,yN]]
-		используеться классом metaData
+		Функция возвращает список станций попадающий в полигон(ы) из шэйпфайла файла
 		"""
-		polyFile = open(polyFileName, 'r')
-		polygon = []
-		for line in polyFile:
-			sLine = line.split(',')
-			x = float(sLine[0])
-			y = float(sLine[1])
-			polygon.append([x, y])
-		polyFile.close()
-		return polygon
-	## ========================================================================================##
-
-	@staticmethod
-	def point_in_poly(x, y, poly):
-		"""
-		впомогательная ф-я, проверяет нахдиться ли точка (x,y) внутри полигона Poly
-		использует ray casting алгоритм. (не работает в точках лежащих на линии плоигона (может вернуть как true так и false))
-		используеться классом metaData
-		"""
-		n = len(poly)
-		inside = False
-		p1x, p1y = poly[0]
-		for i in range(n + 1):
-			p2x, p2y = poly[i % n]
-			if y > min(p1y, p2y):
-				if y <= max(p1y, p2y):
-					if x <= max(p1x, p2x):
-						if p1y != p2y:
-							xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
-						if p1x == p2x or x <= xinters:
-							inside = not inside
-			p1x, p1y = p2x, p2y
-		return inside
-
-	def setStInPoly(self, polygon=None, polyfile=None):
-		"""
-		Функция возвращает список станций попадающий в полигон из файла polyfile или в полигон polygon=[[lat1,lon1], [lat2,lon2], ...]
-		"""
-		##TODO: Придумать более быстрый алгоритм (нужна какая-то придварительная отборка быстрым способом)
-		assert polygon != None or polyfile != None, "необходимо задать полигон или имя файла с полигоном"
-		if polyfile != None:
-			polygon = self.setPolygon(polyfile)
-		elif polygon != None:
-			polygon = polygon
-		else:
-			raise BaseException
-		res = []
-		for st in self.cfg.di.getAllMeta():
-			if self.point_in_poly(st['lat'], st['lon'], polygon):
-				res.append(int(st['ind']))
+		import shapefile as shp
+		import geocalc
+		res=[]
+		sf = shp.Reader(shpfile)
+		for sp in sf.shapes():
+			lonmin,latmin,lonmax,latmax=sp.bbox
+			if lonmin<0 or lonmax<0:
+				polygon=[[geocalc.cLon(cors[0]),cors[1]] for cors in sp.points]
+			else:
+				polygon=sp.points
+			for ind in self.stInds:
+				lat,lon=self.clidatObjects[ind].meta['lat'],geocalc.cLon(self.clidatObjects[ind].meta['lon'])
+				if geocalc.isPointInPoly(lon,lat,polygon):
+					res.append(ind)
 		return res
+
 
 	def setRegAvgData(self, yMin=0, yMax=0, weight=lambda st: 1, mpr=0):
 		"""
@@ -271,7 +197,7 @@ class metaData:
 		"""
 		import math
 		assert len(self.stList) > 1, 'one or less st in list, impossible to get avg reg'
-		stl = self.stList
+		stl = self.stInds
 		if yMin == 0:
 			yMin = max([k.yMin for k in stl])
 		if yMax == 0:
@@ -298,30 +224,6 @@ class metaData:
 		meta = dict({'ind':False, 'dt':self.meta['dt'], 'yMin':int(yMin), 'yMax':int(yMax), 'lat':lat, 'lon':lon})
 		return createCliDat(meta, gdat=datRes)
 
-#===============================================================================
-#    def drawStMap(self):
-#        """
-#        демонстрационная ф-я, наности станции на карте полушерия в ортогональной проекции
-#        """
-#        from mpl_toolkits.basemap import Basemap
-#        import numpy as np, matplotlib.pyplot as plt
-#        latList = [st.lat for st in self.stList]
-#        lonList = [st.lon for st in self.stList]
-# #        indList=[str(st.ind) for st in self.stList]
-#        avgLat = sum(latList) / len(latList)
-#        avgLon = sum(lonList) / len(lonList)
-#        map = Basemap(projection='ortho', lat_0=avgLat, lon_0=avgLon, resolution='l', area_thresh=1000.)
-#        map.drawcoastlines()
-#        x, y = map(lonList, latList)
-#        # plot filled circles at the locations of the cities.
-#        map.plot(x, y, 'bo')
-#        # plot the names of those five cities.
-#        for xpt, ypt in zip(x, y):
-#            plt.text(xpt + 50000, ypt + 50000, '')
-#        map.drawmeridians(np.arange(0, 360, 30))
-#        map.drawparallels(np.arange(-90, 90, 30))
-#        plt.show()
-#===============================================================================
 
 	def interpolate(self, dt, valn, method='linear'):
 		"""
@@ -334,6 +236,12 @@ class metaData:
 		y = [s.meta['lat'] for s in self if s[dt].res[valn] != None]
 		z = [s[dt].res[valn] for s in self if s[dt].res[valn] != None]
 		return Rbf(x, y, z, function=method)
+
+
+if __name__ == "__main__":
+	cda=metaData.load(r'C:\altCli\unittest\dat\allSt.acl')
+	res=cda.setStInShape(r'D:\data\_arc_bank\Permafrost\pfr_cont_dd.shp')
+	print res
 
 
 ##=====================        </Конец класса metaData>     ======================================##

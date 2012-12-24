@@ -7,7 +7,6 @@
 """
 __author__ = 'Vasily Kokorev'
 __email__ = 'vasilykokorev@gmail.com'
-__version__ = '2.0 beta'
 
 from common import *
 import clicomp as cc
@@ -252,8 +251,8 @@ class cliData:
 		resStr += "lon:" + str(self.meta["lon"]) + "\r"
 		resStr += "Years:" + str(self.yMin) + "-" + str(self.yMax) + "\r"
 		resStr += "===============================================================\r"
-		for y in self.data:
-			resStr += str(y[1])
+		for y in self:
+			resStr += str(y)
 		return resStr
 
 
