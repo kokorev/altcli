@@ -45,18 +45,29 @@ class metaData:
 	реализует различные ф-ии выборки метеостанций - по гео. положению, по длинне рядов и т.п.
 	большинство ф-й возвращают self.stInds который содержит список обектов metaSt
 	"""
-	def __init__(self, meta, cfgObj=None):
+	def __init__(self, meta, cfgObj=None, stList=None, dataConnection=None):
 		self.__name__ = 'metaData'
-		self.clidatObjects=dict()
-		self.stInds=list()
-		self.stMeta=dict()
+		self.dataConnection=dataConnection
+		self.clidatObjects=dict() if stList is None else {st.meta['ind']:st for st in stList}
+		if self.dataConnection is None:
+			self.stMeta=dict() if stList is None else {st.meta['ind']:st.meta for st in stList}
+		else:
+			self.stMeta=self.dataConnection.getAllMetaDict()
+		if stList is None:
+			if dataConnection is None:
+				self.stList=list()
+			else:
+				self.stInds=[ind for ind in self.stMeta]
+		else:
+			self.stInds=[st.meta['ind'] for st in stList]
+
+		self.cfg = config() if cfgObj is None else cfgObj
 		try:
-			meta['dt'] = cfg.elSynom[meta['dt']]
+			meta['dt'] = self.cfg.elSynom[meta['dt']]
 		except KeyError:
 			print "в meta не указано ind или dt"
 			raise KeyError
 		self.meta = meta
-		self.cfg = cfgObj if cfgObj != None else config()
 		self.minInd = 0
 		self.maxInd = len(self.stInds)
 
@@ -96,7 +107,10 @@ class metaData:
 		try:
 			cdo=self.clidatObjects[ind]
 		except KeyError:
-			raise KeyError, "Станции %i нет в списке"%ind
+			if ind in self.stInds and self.dataConnection is not None:
+				cdo=self.dataConnection.getPoint(ind)
+			else:
+				raise KeyError, "There is no index %i in index list"%ind
 		return cdo
 
 
@@ -185,44 +199,44 @@ class metaData:
 		return res
 
 
-	def setRegAvgData(self, yMin=0, yMax=0, weight=lambda st: 1, mpr=0):
-		"""
-		вычисляет осреднеённый ряд по региону, овзвращает объект класса stData
-		по умолчанию алгоритм составляет составляет ряд для периода за который наблюдения есть на всех осредняемых станциях
-		для использование осреднения с весами надо передать в необязательном элементе weight ф-ю которая принимает объект станции и возвращает её вес
-		принимает
-			yMin,yMax - int, необязательный - границы периода осреднения
-			weight - ф-я, функция вычисления веса станции.
-			mpr - максимальный процент пропуска (??)
-		"""
-		import math
-		assert len(self.stList) > 1, 'one or less st in list, impossible to get avg reg'
-		stl = self.stInds
-		if yMin == 0:
-			yMin = max([k.yMin for k in stl])
-		if yMax == 0:
-			yMax = min([k.yMax for k in stl])
-		datRes = []
-		weights = {st.meta['ind']:weight(st) for st in stl}
-		# сколько минимально должнобыть станций
-		minLenofvals = len(stl) - (len(stl) / 100.) * mpr
-		for year in range(yMin, yMax + 1):
-			thisYearRes = [None for i in range(0, 12)]
-			for month in range(1, 13):
-				ltoavg = []
-				indtoavg=[]
-				for m in stl:
-					if m[year] != None and m[year][month] != None:
-						ltoavg.append(m[year][month] * weights[m.meta['ind']])
-						indtoavg.append(m.meta['ind'])
-				vavg = sum(ltoavg) / sum([weights[stind] for stind in indtoavg]) if len(ltoavg) >= minLenofvals else None
-				thisYearRes[month - 1] = round(vavg, 2) if vavg != None else None
-			if thisYearRes.count(None) < len(thisYearRes):
-				datRes.append([year, thisYearRes])
-		lat = cc.avg([s.meta['lat'] for s in stl])
-		lon = cc.avg([s.meta['lon'] for s in stl])
-		meta = dict({'ind':False, 'dt':self.meta['dt'], 'yMin':int(yMin), 'yMax':int(yMax), 'lat':lat, 'lon':lon})
-		return createCliDat(meta, gdat=datRes)
+#	def setRegAvgData(self, yMin=0, yMax=0, weight=lambda st: 1, mpr=0):
+#		"""
+#		вычисляет осреднеённый ряд по региону, овзвращает объект класса stData
+#		по умолчанию алгоритм составляет составляет ряд для периода за который наблюдения есть на всех осредняемых станциях
+#		для использование осреднения с весами надо передать в необязательном элементе weight ф-ю которая принимает объект станции и возвращает её вес
+#		принимает
+#			yMin,yMax - int, необязательный - границы периода осреднения
+#			weight - ф-я, функция вычисления веса станции.
+#			mpr - максимальный процент пропуска (??)
+#		"""
+#		import math
+#		assert len(self.stList) > 1, 'one or less st in list, impossible to get avg reg'
+#		stl = self.stInds
+#		if yMin == 0:
+#			yMin = max([k.yMin for k in stl])
+#		if yMax == 0:
+#			yMax = min([k.yMax for k in stl])
+#		datRes = []
+#		weights = {st.meta['ind']:weight(st) for st in stl}
+#		# сколько минимально должнобыть станций
+#		minLenofvals = len(stl) - (len(stl) / 100.) * mpr
+#		for year in range(yMin, yMax + 1):
+#			thisYearRes = [None for i in range(0, 12)]
+#			for month in range(1, 13):
+#				ltoavg = []
+#				indtoavg=[]
+#				for m in stl:
+#					if m[year] != None and m[year][month] != None:
+#						ltoavg.append(m[year][month] * weights[m.meta['ind']])
+#						indtoavg.append(m.meta['ind'])
+#				vavg = sum(ltoavg) / sum([weights[stind] for stind in indtoavg]) if len(ltoavg) >= minLenofvals else None
+#				thisYearRes[month - 1] = round(vavg, 2) if vavg != None else None
+#			if thisYearRes.count(None) < len(thisYearRes):
+#				datRes.append([year, thisYearRes])
+#		lat = cc.avg([s.meta['lat'] for s in stl])
+#		lon = cc.avg([s.meta['lon'] for s in stl])
+#		meta = dict({'ind':False, 'dt':self.meta['dt'], 'yMin':int(yMin), 'yMax':int(yMax), 'lat':lat, 'lon':lon})
+#		return createCliDat(meta, gdat=datRes)
 
 
 	def interpolate(self, dt, valn, method='linear'):
@@ -239,9 +253,10 @@ class metaData:
 
 
 if __name__ == "__main__":
-	cda=metaData.load(r'C:\altCli\unittest\dat\allSt.acl')
-	res=cda.setStInShape(r'D:\data\_arc_bank\Permafrost\pfr_cont_dd.shp')
-	print res
+	from dataConnections import cmip5connection
+	con=cmip5connection(r'D:\data\CMIP5\tas\historical\CanCM4_historical.nc', 'tas')
+	cda=metaData({'dt':'tas'}, dataConnection=con)
+	print cda[328]
 
 
 ##=====================        </Конец класса metaData>     ======================================##
