@@ -5,9 +5,6 @@ __author__ = 'Vasily Kokorev'
 __email__ = 'vasilykokorev@gmail.com'
 __version__ = '2.0 beta'
 
-from datarr import *
+from clidataSet import *
 import clicomp as cc
-
-#import altCli_inout
-#import altCli_visual
-#import altCli_select
+import geocalc
