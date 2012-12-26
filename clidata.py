@@ -120,15 +120,6 @@ class cliData:
 			meta['dt'] = cfg.elSynom[meta['dt']]
 		except KeyError:
 			pass
-		# проверяем есть ли в словаре годы начала и конца, если нет устанавливаем
-		try:
-			a = meta['yMin']
-		except KeyError:
-			meta['yMin'] = self.cfg.yMin
-		try:
-			a = meta['yMax']
-		except KeyError:
-			meta['yMax'] = self.cfg.yMax
 		self.meta = meta
 		self.filledValue=-999.99 if fillValue is None else fillValue
 		d=[ln for ln in gdat if ln[1].count(fillValue)<12]
@@ -136,7 +127,7 @@ class cliData:
 			self.data=np.ma.masked_values([strdat[1] for strdat in d], fillValue)
 		except TypeError:
 			# если нет пропусков
-			self.data=np.ma.array([strdat[1] for strdat in d])
+			self.data=np.array([strdat[1] for strdat in d])
 		else:
 			if fillValue is None: np.place(self.data, np.ma.getmaskarray(self.data), [self.filledValue])
 		self.yList=[strdat[0] for strdat in d]
@@ -219,6 +210,7 @@ class cliData:
 		if results and len(self.res)>0:
 			r+=str(self.res) + '\n'
 		for y in self:
+			if y.datapass==100:continue
 			r += str(y)
 		f = open(fn, 'w')
 		f.write(r)
@@ -260,7 +252,7 @@ class cliData:
 
 	def __contains__(self, item):
 		""" обработка оператора in """
-		return False if self[item] == None else True
+		return item in self.yList
 
 
 	def eq(self, other):
@@ -733,6 +725,7 @@ class yearData:
 			else:
 				res[sname]=cc.sumMoreThen(dat[sname][yInd],x, precision=self.precision)
 		return res
+
 
 if __name__ == "__main__":
 	acd=cliData.load('test')
