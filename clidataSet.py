@@ -55,7 +55,7 @@ class metaData:
 			self.stMeta=self.dataConnection.getAllMetaDict()
 		if stList is None:
 			if dataConnection is None:
-				self.stList=list()
+				self.stInds=list()
 			else:
 				self.stInds=[ind for ind in self.stMeta]
 		else:
@@ -69,7 +69,7 @@ class metaData:
 			raise KeyError
 		self.meta = meta
 		self.minInd = 0
-		self.maxInd = len(self.stInds)
+
 
 	@staticmethod
 	def load(fn):
@@ -144,14 +144,13 @@ class metaData:
 
 
 	def addSt(self, stListToAdd):
-		""" добавляет станции в self.stList если их ещё там нет """
+		""" добавляет станции в self.stInds если их ещё там нет """
 		for st in stListToAdd:
 			ind=st.meta['ind']
 			if ind not in self.stInds:
 				self.clidatObjects[int(ind)]=st
 				self.stInds.append(int(ind))
 				self.stMeta[int(ind)]=st.meta
-		self.maxInd = len(self.stInds)
 		return self.stInds
 
 	def __str__(self):
@@ -198,45 +197,39 @@ class metaData:
 					res.append(ind)
 		return res
 
-
-#	def setRegAvgData(self, yMin=0, yMax=0, weight=lambda st: 1, mpr=0):
-#		"""
-#		вычисляет осреднеённый ряд по региону, овзвращает объект класса stData
-#		по умолчанию алгоритм составляет составляет ряд для периода за который наблюдения есть на всех осредняемых станциях
-#		для использование осреднения с весами надо передать в необязательном элементе weight ф-ю которая принимает объект станции и возвращает её вес
-#		принимает
-#			yMin,yMax - int, необязательный - границы периода осреднения
-#			weight - ф-я, функция вычисления веса станции.
-#			mpr - максимальный процент пропуска (??)
-#		"""
-#		import math
-#		assert len(self.stList) > 1, 'one or less st in list, impossible to get avg reg'
-#		stl = self.stInds
-#		if yMin == 0:
-#			yMin = max([k.yMin for k in stl])
-#		if yMax == 0:
-#			yMax = min([k.yMax for k in stl])
-#		datRes = []
-#		weights = {st.meta['ind']:weight(st) for st in stl}
-#		# сколько минимально должнобыть станций
-#		minLenofvals = len(stl) - (len(stl) / 100.) * mpr
-#		for year in range(yMin, yMax + 1):
-#			thisYearRes = [None for i in range(0, 12)]
-#			for month in range(1, 13):
-#				ltoavg = []
-#				indtoavg=[]
-#				for m in stl:
-#					if m[year] != None and m[year][month] != None:
-#						ltoavg.append(m[year][month] * weights[m.meta['ind']])
-#						indtoavg.append(m.meta['ind'])
-#				vavg = sum(ltoavg) / sum([weights[stind] for stind in indtoavg]) if len(ltoavg) >= minLenofvals else None
-#				thisYearRes[month - 1] = round(vavg, 2) if vavg != None else None
-#			if thisYearRes.count(None) < len(thisYearRes):
-#				datRes.append([year, thisYearRes])
-#		lat = cc.avg([s.meta['lat'] for s in stl])
-#		lon = cc.avg([s.meta['lon'] for s in stl])
-#		meta = dict({'ind':False, 'dt':self.meta['dt'], 'yMin':int(yMin), 'yMax':int(yMax), 'lat':lat, 'lon':lon})
-#		return createCliDat(meta, gdat=datRes)
+	@timeit
+	def setRegAvgData(self, yMin=None, yMax=-1, weight=None, mpr=0):
+		"""
+		вычисляет осреднеённый ряд по региону, овзвращает объект класса stData
+		по умолчанию алгоритм составляет составляет ряд для периода за который наблюдения есть на всех осредняемых станциях
+		для использование осреднения с весами надо передать в необязательном элементе weight ф-ю которая принимает объект станции и возвращает её вес
+		принимает
+			yMin,yMax - int, необязательный - границы периода осреднения
+			weight - ф-я, функция вычисления веса станции.
+			mpr - максимальный процент пропуска (??)
+		"""
+		allDat=[]
+		yMinArr=[st.meta['yMin'] for st in self]
+		yMaxArr=[st.meta['yMax'] for st in self]
+		if yMin is None:
+			yMin=max(yMinArr)
+		elif yMin<min(yMinArr):
+			yMin=min(yMinArr)
+		if yMax is None:
+			yMax=min(yMaxArr)
+		elif yMax>max(yMaxArr):
+			yMax=max(yMaxArr)
+		gdat=[]
+		for year in range(yMin,yMax+1):
+			for ind in self.stInds:
+				vals=self[ind][year].data.data
+				allDat.append(list(vals))
+			dat=np.ma.masked_values(allDat, -999.99, copy=True)
+			ws=[weight[ind] for ind in self.stInds] if weight is not None else None
+			r=np.ma.average(dat,axis=0, weights=ws)
+			gdat.append([year,list(r.data)])
+		cdo=cliData({'dt':self.meta['dt'],'ind':0,'lat':0,'lon':0}, gdat)
+		return cdo
 
 
 	def interpolate(self, dt, valn, method='linear'):
@@ -254,9 +247,10 @@ class metaData:
 
 if __name__ == "__main__":
 	from dataConnections import cmip5connection
-	con=cmip5connection(r'D:\data\CMIP5\tas\historical\CanCM4_historical.nc', 'tas')
-	cda=metaData({'dt':'tas'}, dataConnection=con)
-	print cda[328]
+	cda=metaData.load(r'C:\altCli\unittest\dat\allSt.acl')
+	#st=cda[20476]
+	res=cda.setRegAvgData(yMin=1961,yMax=2012)
+	print res
 
 
 ##=====================        </Конец класса metaData>     ======================================##

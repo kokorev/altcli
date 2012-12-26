@@ -45,8 +45,8 @@ def timeit(method):
 		ts = time.clock()
 		result = method(*args, **kw)
 		te = time.clock()
-		#print '%r (%r, %r) %2.2f sec' %(method.__name__, args, kw, te-ts)
-		#print '%r %3.3f sec' %(method.__name__, te-ts)
+		print '%r (%r, %r) %2.2f sec' %(method.__name__, args, kw, te-ts)
+		print '%r %3.3f sec' %(method.__name__, te-ts)
 		return result
 	return timed
 
@@ -95,7 +95,7 @@ class cliData:
 	"""
 	Класс реализующий функции загрузки и обработки климатических данных не зависящих от их типа
 	"""
-	def __init__(self, meta, gdat, cfg=None):
+	def __init__(self, meta, gdat, cfg=None, fillValue=None):
 		"""
 		Для создания объекта надо передать словарь с метоинформацией meta={'ind':20274, 'dt':'temp', ...}
 		и указатель на cfg или массив с данными gdat
@@ -130,22 +130,49 @@ class cliData:
 		except KeyError:
 			meta['yMax'] = self.cfg.yMax
 		self.meta = meta
-		self.filledValue=-999.99
-		d=[ln for ln in gdat if ln[1].count(None)<12]
+		self.filledValue=-999.99 if fillValue is None else fillValue
+		d=[ln for ln in gdat if ln[1].count(fillValue)<12]
 		try:
-			self.data=np.ma.masked_values([strdat[1] for strdat in d], None, copy=True)
+			self.data=np.ma.masked_values([strdat[1] for strdat in d], fillValue)
 		except TypeError:
+			# если нет пропусков
 			self.data=np.ma.array([strdat[1] for strdat in d])
 		else:
-			np.place(self.data, np.ma.getmaskarray(self.data), [self.filledValue])
+			if fillValue is None: np.place(self.data, np.ma.getmaskarray(self.data), [self.filledValue])
 		self.yList=[strdat[0] for strdat in d]
 		if len(self.yList) == 0: raise ValueError, 'Не пропущенные значения отсутствуют'
 		self.timeInds={y:i for i,y in enumerate(self.yList)}
 		self.yMin, self.yMax = min(self.yList), max(self.yList)
-		if meta['yMin'] == -1: meta['yMin'] = self.yMin
-		if meta['yMax'] == -1: meta['yMax'] = self.yMax
-#		self.minInd = 0
-#		self.maxInd = len(self.yList)
+		meta['yMin'] = self.yMin
+		meta['yMax'] = self.yMax
+
+
+	def __getitem__(self, item):
+		"""
+		Системная функция отвечающая за обработки оператора []
+		возвращает экземпляр yearData
+		"""
+		if isinstance(item, slice):
+			start = item.start if item.start >= self.yMin else self.yMin
+			stop = item.stop if item.stop <= self.yMax else self.yMax
+			yMin,yMax,i1,i2=self.setPeriod(start,stop)
+			dat=self.data[i1:i2+1].copy()
+			yList=self.yList[i1:i2+1]
+			gdat=[[y,list(dat[i].data)] for i,y in enumerate(yList)]
+			cdo=cliData(dict(self.meta), gdat, cfg=self.cfg, fillValue=self.filledValue)
+			return cdo
+		else:
+			if item in self.timeInds:
+				if item in self.yearObjects:
+					val=self.yearObjects[item]
+				else:
+					val=yearData(item,self)
+					self.yearObjects[item]=val
+			else:
+				self.cfg.logThis("нет данных для года " + str(item) + " на станции" + str(self.meta['ind']))
+				val=yearData(item,self)
+				self.yearObjects[item]=val
+		return val
 
 	#TODO: add __deepcopy__ function
 
@@ -196,36 +223,6 @@ class cliData:
 		f = open(fn, 'w')
 		f.write(r)
 		f.close()
-
-	@timeit
-	def __getitem__(self, item):
-		"""
-		Системная функция отвечающая за обработки оператора []
-		возвращает экземпляр yearData
-		"""
-		if isinstance(item, slice):
-			#indices = item.indices(len(self))
-			#print item.indices()
-			gdat = []
-			start = item.start if item.start >= self.yMin else self.yMin
-			stop = item.stop if item.stop <= self.yMax else self.yMax
-			for year in range(start, stop):
-				if self[year] == None:continue
-				gdat.append([year, list(self[year].data)])
-			return cliData(dict(self.meta), gdat, cfg=self.cfg)
-		else:
-			if item in self.timeInds:
-				if item in self.yearObjects:
-					val=self.yearObjects[item]
-				else:
-					val=yearData(item,self)
-					self.yearObjects[item]=val
-			else:
-				self.cfg.logThis("нет данных для года " + str(item) + " на станции" + str(self.meta['ind']))
-				val=yearData(item,self)
-				self.yearObjects[item]=val
-		return val
-
 
 
 	def __iter__(self):
@@ -564,7 +561,7 @@ class yearData:
 
 
 	def __str__(self):
-		rList = list(self.data) # копируем лист!
+		rList = list([round(v,self.precision) for v in self.data]) # копируем лист!
 		rList.insert(0, self.year)
 		strList = [str(s) if str(s)!='--' else 'None' for s in rList]
 		resstr = "\t".join(strList)
