@@ -23,7 +23,6 @@ class tempData(cliData):
 		return res,time
 
 
-#TODO: нужно тщательно продумать поведение cfg при создании занулять ф-ии неправильно, нужно чтобы cfg при создании не пыталась подключиться к базе
 def createCliDat(meta, gdat=None, cfg=None):
 	if cfg == None:
 		cfg = config()
@@ -38,7 +37,6 @@ def createCliDat(meta, gdat=None, cfg=None):
 
 
 
-#TODO: сделать простой путь создания экземпляра metaData из списка объектов cliData
 class metaData:
 	"""
 	класс для работы с наборами метеостанций
@@ -46,6 +44,7 @@ class metaData:
 	большинство ф-й возвращают self.stInds который содержит список обектов metaSt
 	"""
 	def __init__(self, meta, cfgObj=None, stList=None, dataConnection=None):
+		#TODO: добавлять данные мета из dataConnection
 		self.__name__ = 'metaData'
 		self.dataConnection=dataConnection
 		self.clidatObjects=dict() if stList is None else {st.meta['ind']:st for st in stList}
@@ -67,6 +66,8 @@ class metaData:
 		except KeyError:
 			print "в meta не указано ind или dt"
 			raise KeyError
+		if self.dataConnection is not None:
+			meta.update(self.dataConnection.cliSetMeta)
 		self.meta = meta
 		self.minInd = 0
 
@@ -198,7 +199,7 @@ class metaData:
 		return res
 
 	@timeit
-	def setRegAvgData(self, yMin=None, yMax=-1, weight=None, mpr=0):
+	def setRegAvgData(self, yMin=None, yMax=None, weight=None, mpr=0):
 		"""
 		вычисляет осреднеённый ряд по региону, овзвращает объект класса stData
 		по умолчанию алгоритм составляет составляет ряд для периода за который наблюдения есть на всех осредняемых станциях

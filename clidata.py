@@ -165,7 +165,14 @@ class cliData:
 				self.yearObjects[item]=val
 		return val
 
+
 	#TODO: add __deepcopy__ function
+#	def __deepcopy__(self):
+#		"""	Возвращает копию объекта """
+#		from copy import deepcopy
+
+
+
 
 	@staticmethod
 	def load(fn, results=False):
@@ -321,6 +328,13 @@ class cliData:
 		return res
 
 
+	def setSeasons(self,seasons):
+		"""
+		аллиас, ничего не возвращает в отличии от нормальной ф-ии, оставлен для совместимости
+		"""
+		self.getSeasonsData(seasons)
+
+
 	@cache
 	def _calcSeasonData(self,mlist):
 		"""
@@ -473,7 +487,7 @@ class cliData:
 		Возвращает:
 			res - dict, года - ключи словарая, значения - списки аномалий для каждого месяца этого года
 		"""
-		#todo: было бы логичнее было бы использовать np.ma.anom(), но оно не работет осям
+		#todo: было бы логичнее было бы использовать np.ma.anom(), но оно не работет по осям
 		# обсуждение топика https://github.com/numpy/numpy/issues/2814
 		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
 		normList = self.norm(norm_yMin, norm_yMax)
@@ -525,6 +539,34 @@ class cliData:
 		dat=self.anomal(norm_yMin, norm_yMax, yMin, yMax)
 		res=np.ma.average(dat, axis=0)
 		return res
+
+
+	def calcTask(self,task):
+		"""
+		Обсчитывает принятое задание
+		сохраняет словарь результатов в self.res
+		{индекс станции: {уникальное имя функции: результат расчёта},...}
+		"""
+		priorTasks = [v for v in task if task[v]['fn'] in ['setSeasons']]
+		res = dict()
+		for t in priorTasks:
+			funct = getattr(self, task[t]['fn'])
+			fr = funct(*task[t]['param'])
+		for fnInd, tsk in task.items():
+			if fnInd in priorTasks: continue
+			funct = getattr(self, tsk['fn'])
+			fr = funct(*tsk['param'])
+			try:
+				fr=tsk['converter'](fr)
+			except KeyError:
+				pass # конвертр не задан, это нормально
+			except TypeError:
+				raise TypeError, "конвертр результата расчёта не является функцией"
+			finally:
+				res[fnInd]=fr
+		self.res.update(res)
+		return res
+
 
 
 class yearData:

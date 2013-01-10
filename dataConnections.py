@@ -2,8 +2,8 @@
 """
 Содержит классы подключений к различным базам и массивам данных.
 Каждый класс должен реализовывать следующие функции
-    getAllMetaDict() - возвращает словарь метаданных для всех станция в массиве
-    getPoint(ind) - возвращает экземпляр cliData для станции(точки) с данным индексом
+	getAllMetaDict() - возвращает словарь метаданных для всех станция в массиве
+	getPoint(ind) - возвращает экземпляр cliData для станции(точки) с данным индексом
 """
 __author__ = 'Vasily Kokorev'
 __email__ = 'vasilykokorev@gmail.com'
@@ -32,14 +32,15 @@ class cmip5connection():
 		self.lonvals=[cLon(self.lon[l]) for l in range(self.lon.size)]
 		try:
 			self.startDate=nc.num2date(self.f.variables['time'][0], self.f.variables['time'].units,
-			                           self.f.variables['time'].calendar)
+									   self.f.variables['time'].calendar)
 		except ValueError:
 			print 'Warning! failed to parse date string -%s. Model id - %s. startDate '\
-			      'set to 0850-1-1 assuming model is MPI'%(self.f.variables['time'].units,self.f.model_id)
+				  'set to 0850-1-1 assuming model is MPI'%(self.f.variables['time'].units,self.f.model_id)
 			self.startDate=datetime(850,1,1)
 		self.startYear = int(self.startDate.year)
 		self.startMonth = int(self.startDate.month)
 		self.warningShown = False
+        self.cliSetMeta = {'modelId':self.f.model_id, 'calendar':self.f.variables['time'].calendar}
 
 
 	def getPoint(self, item):
@@ -62,7 +63,7 @@ class cmip5connection():
 			print self.f.model_id, item
 			raise
 		meta={'ind':self.latlonInd2ind(latInd, lonInd), 'lat':self.latvals[latInd], 'lon':self.lonvals[lonInd],
-		      'dt':self.dt, 'modelId':self.f.model_id}
+			  'dt':self.dt, 'modelId':self.f.model_id}
 		vals=list(self.var[:,latInd,lonInd])
 		gdat=[]
 		if self.startMonth!=1:
