@@ -64,8 +64,7 @@ class metaData:
 		try:
 			meta['dt'] = self.cfg.elSynom[meta['dt']]
 		except KeyError:
-			print "в meta не указано ind или dt"
-			raise KeyError
+			raise KeyError, "dt field is not exist or has unknown value"
 		if self.dataConnection is not None:
 			meta.update(self.dataConnection.cliSetMeta)
 		self.meta = meta
@@ -98,6 +97,34 @@ class metaData:
 		acl = metaData(meta)
 		acl.addSt(cliDataList)
 		return acl
+
+	def save(self, fn, replace=False, ignoreExisting=False):
+		"""
+		сохраняет набор данных.
+		Покаждому объекту acd + acr (данные + метаинформация + результаты расчётов)
+		"""
+		import os.path
+		if fn[-4:] != '.acl': fn += '.acl'
+		if os.path.exists(fn):
+			if replace == False:
+				raise IOError, 'File %s already exist. Change file name or use replace=True argument' % fn
+		if not os.path.isabs(fn): fn = os.path.abspath(fn)
+		pth, filename = os.path.split(fn)
+		f = open(fn, 'w')
+		stl = ','.join([str(st.meta['ind']) for st in self.clidatObjects.values()])
+		txt = "# %s \n%s \n%s \n" % ("набор данных без описания", str(self.meta), stl)
+		f.write(txt)
+		f.close()
+		for st in self.clidatObjects.values():
+			try:
+				scrfn = pth + '\\' + str(st.meta['ind'])
+				st.save(scrfn, replace)
+			except IOError:
+				if ignoreExisting == True:
+					continue
+				else:
+					raise IOError, 'File %s already exist. Use ignoreExisting=True or replace=True argument' % scrfn
+
 
 	def __getitem__(self, ind):
 		"""
@@ -248,10 +275,11 @@ class metaData:
 
 if __name__ == "__main__":
 	from dataConnections import cmip5connection
-	cda=metaData.load(r'C:\altCli\unittest\dat\allSt.acl')
-	#st=cda[20476]
-	res=cda.setRegAvgData(yMin=1961,yMax=2012)
-	print res
+	cda=metaData.load(r'D:\proj\_clitools\all_15reg01.acl')
+	st=cda[22641]
+	print st.data.mask
+	#res=cda.setRegAvgData(yMin=1961,yMax=2012)
+	#print res
 
 
 ##=====================        </Конец класса metaData>     ======================================##

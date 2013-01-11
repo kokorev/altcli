@@ -62,10 +62,10 @@ def getCacheId(method, *args, **kwargs):
 	return dId[0:-1]
 
 def cache(method):
-	import functools
 	"""
 	Декоратор. То же что и saveRes, но кеширующий
 	"""
+	import functools
 	@functools.wraps(method)
 	def wrapper(self, *args, **kwargs):
 		dictId = getCacheId(method, *args, **kwargs)
@@ -197,7 +197,7 @@ class cliData:
 		for line in stxt[dataInd].split('\n'):
 			if line == '': continue
 			ln = line.strip()
-			arr = [(float(v) if v != 'None' else None) for v in ln.split('\t')]
+			arr = [(float(v) if v != 'None' else -999.99) for v in ln.split('\t')]
 			dat.append([int(arr[0]), arr[1:]])
 		aco = cliData(meta, gdat=dat)
 		aco.res=res
@@ -595,9 +595,9 @@ class yearData:
 
 
 	def __str__(self):
-		rList = list([round(v,self.precision) for v in self.data]) # копируем лист!
+		rList = list([round(v,self.precision)  if v!=self.parent.filledValue else None for v in self.data]) # копируем лист!
 		rList.insert(0, self.year)
-		strList = [str(s) if str(s)!='--' else 'None' for s in rList]
+		strList = [str(s) for s in rList]
 		resstr = "\t".join(strList)
 		resstr = resstr + "\n"
 		return resstr
@@ -682,10 +682,12 @@ class yearData:
 
 	@property
 	def missedMonth(self):
-		if self.data.mask.any():
-			r=sum([1 for v in self.data.mask if v==True])
-		else:
-			r=0
+		r=0
+		try:
+			if self.data.mask.any():
+				r=sum([1 for v in self.data.mask if v==True])
+		except AttributeError:
+			pass
 		return r
 
 
