@@ -13,18 +13,22 @@ class cmip5connection():
 	"""
 	Реализует чтение .nc файлов с данными cmip5 месячного разрешения
 	"""
-	def __init__(self, fn, dt):
+	def __init__(self, fn):
 		import netCDF4 as nc
 		from datetime import datetime
 		from geocalc import cLon
-		self.dt=dt
-		if dt=='tas':
+		self.f=nc.Dataset(fn)
+		# определяем основную переменную в массиве, это так которая зависит от трёх других
+		self.dt=[v for v in self.f.variables if self.f.variables[v].ndim==3][0]
+		if self.dt=='tas':
 			from tempConvert import kelvin2celsius
 			self.convertValue=lambda val,year,month: kelvin2celsius(val)
-		elif dt=='prec':
+		elif self.dt=='prec':
 			from precConvert import si2mmPerMonth
 			self.convertValue=si2mmPerMonth
-		self.f=nc.Dataset(fn)
+		else:
+			self.convertValue=lambda val,year,month: val
+			print "Warning! There is no converter for data type = '%s'"%dt
 		self.var=self.f.variables[self.dt]
 		self.lat=self.f.variables['lat']
 		self.latvals=[self.lat[l] for l in range(self.lat.size)]
@@ -40,7 +44,7 @@ class cmip5connection():
 		self.startYear = int(self.startDate.year)
 		self.startMonth = int(self.startDate.month)
 		self.warningShown = False
-        self.cliSetMeta = {'modelId':self.f.model_id, 'calendar':self.f.variables['time'].calendar}
+		self.cliSetMeta = {'modelId':self.f.model_id, 'calendar':self.f.variables['time'].calendar}
 
 
 	def getPoint(self, item):
