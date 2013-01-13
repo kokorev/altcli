@@ -55,7 +55,7 @@ class cmip5connection():
 		После долго путанцы было решено, что ф-я может принимать либо номер яцейки либо индексы координат,
 		но не сами координаты
 		"""
-		from altCliCore import cliData
+		from clidata import cliData
 		try:
 			try:
 				latInd, lonInd = item
