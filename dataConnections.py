@@ -18,6 +18,8 @@ class cmip5connection():
 		from datetime import datetime
 		from geocalc import cLon
 		self.f=nc.Dataset(fn)
+		if self.f.project_id!='CMIP5':
+			print 'projet_id is "%s" not "CMIP5"'%self.f.project_id
 		# определяем основную переменную в массиве, это так которая зависит от трёх других
 		self.dt=[v for v in self.f.variables if self.f.variables[v].ndim==3][0]
 		if self.dt=='tas':
