@@ -209,21 +209,29 @@ class metaData:
 		"""
 		Функция возвращает список станций попадающий в полигон(ы) из шэйпфайла файла
 		"""
+		#TODO: проверить правильные результаты выдаёт обновлённая функция.
 		import shapefile as shp
 		import geocalc
+		from shapely.geometry import Polygon,Point
 		res=[]
 		sf = shp.Reader(shpfile)
 		for sp in sf.shapes():
 			lonmin,latmin,lonmax,latmax=sp.bbox
+			lonmin,lonmax=geocalc.cLon(lonmin),geocalc.cLon(lonmax)
+			print 'lonmin,latmin,lonmax,latmax',lonmin,latmin,lonmax,latmax
 			if lonmin<0 or lonmax<0:
-				polygon=[[geocalc.cLon(cors[0]),cors[1]] for cors in sp.points]
+				polygonPoints=[[geocalc.cLon(cors[0]),cors[1]] for cors in sp.points]
 			else:
-				polygon=sp.points
-			for ind in self.stInds:
-				lat,lon=self.clidatObjects[ind].meta['lat'],geocalc.cLon(self.clidatObjects[ind].meta['lon'])
-				if geocalc.isPointInPoly(lon,lat,polygon):
-					res.append(ind)
+				polygonPoints=sp.points
+			poly=Polygon(polygonPoints)
+			indsInBox=[ind for ind in self.stInds if lonmin<=geocalc.cLon(self.stMeta[ind]['lon'])<=lonmax and latmin<=self.stMeta[ind]['lat']<=latmax]
+			for ind in indsInBox:
+				lat,lon=self.stMeta[ind]['lat'], geocalc.cLon(self.stMeta[ind]['lon'])
+				pnt=Point(lon,lat)
+				if poly.contains(pnt): res.append(ind)
 		return res
+
+	#TODO: функция нахождения станция прилежащих к полигону
 
 	@timeit
 	def setRegAvgData(self, yMin=None, yMax=None, weight=None, mpr=0):
@@ -275,9 +283,11 @@ class metaData:
 
 if __name__ == "__main__":
 	from dataConnections import cmip5connection
-	cda=metaData.load(r'D:\proj\_clitools\all_15reg01.acl')
-	st=cda[22641]
-	print st.data.mask
+	conn=cmip5connection(r'D:\data\CMIP5\pr\historical\HadGEM-ES_pr_historical.nc')
+	cda=metaData({'dt':conn.dt}, dataConnection=conn)
+	pass
+	#st=cda[22641]
+	#print st.data.mask
 	#res=cda.setRegAvgData(yMin=1961,yMax=2012)
 	#print res
 
