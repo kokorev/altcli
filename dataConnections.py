@@ -25,7 +25,7 @@ class cmip5connection():
 		if self.dt=='tas':
 			from tempConvert import kelvin2celsius
 			self.convertValue=lambda val,year,month: kelvin2celsius(val)
-		elif self.dt=='prec':
+		elif self.dt=='pr':
 			from precConvert import si2mmPerMonth
 			self.convertValue=si2mmPerMonth
 		else:
