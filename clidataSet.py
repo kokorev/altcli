@@ -231,8 +231,7 @@ class metaData:
 
 	#TODO: функция нахождения станция прилежащих к полигону
 
-	@timeit
-	def setRegAvgData(self, yMin=None, yMax=None, weight=None, mpr=0):
+	def setRegAvgData(self, yMin=None, yMax=None, weight=None, greedy=False, mpr=0):
 		"""
 		вычисляет осреднеённый ряд по региону, овзвращает объект класса stData
 		по умолчанию алгоритм составляет составляет ряд для периода за который наблюдения есть на всех осредняемых станциях
@@ -242,24 +241,25 @@ class metaData:
 			weight - ф-я, функция вычисления веса станции.
 			mpr - максимальный процент пропуска (??)
 		"""
-		allDat=[]
 		yMinArr=[st.meta['yMin'] for st in self]
 		yMaxArr=[st.meta['yMax'] for st in self]
 		if yMin is None:
-			yMin=max(yMinArr)
+			yMin=max(yMinArr) if greedy==False else min(yMinArr)
 		elif yMin<min(yMinArr):
 			yMin=min(yMinArr)
 		if yMax is None:
-			yMax=min(yMaxArr)
+			yMax=min(yMaxArr) if greedy==False else max(yMaxArr)
 		elif yMax>max(yMaxArr):
 			yMax=max(yMaxArr)
 		gdat=[]
 		for year in range(yMin,yMax+1):
+			allDat=[]
 			for ind in self.stInds:
-				vals=self[ind][year].data.data
-				allDat.append(list(vals))
+				vals=list(self[ind][year].data.data)
+				allDat.append(vals)
 			dat=np.ma.masked_values(allDat, -999.99, copy=True)
 			ws=[weight[ind] for ind in self.stInds] if weight is not None else None
+			if dat.mask.all():continue
 			r=np.ma.average(dat,axis=0, weights=ws)
 			gdat.append([year,list(r.data)])
 		cdo=cliData({'dt':self.meta['dt'],'ind':0,'lat':0,'lon':0}, gdat)
