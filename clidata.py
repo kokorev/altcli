@@ -171,9 +171,6 @@ class cliData:
 #		"""	Возвращает копию объекта """
 #		from copy import deepcopy
 
-
-
-
 	@staticmethod
 	def load(fn, results=False):
 		"""
@@ -199,7 +196,7 @@ class cliData:
 			ln = line.strip()
 			arr = [(float(v) if v != 'None' else -999.99) for v in ln.split('\t')]
 			dat.append([int(arr[0]), arr[1:]])
-		aco = cliData(meta, gdat=dat)
+		aco = cliData(meta, gdat=dat,fillValue=-999.99)
 		aco.res=res
 		return aco
 
