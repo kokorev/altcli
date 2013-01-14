@@ -209,7 +209,6 @@ class metaData:
 		"""
 		Функция возвращает список станций попадающий в полигон(ы) из шэйпфайла файла
 		"""
-		#TODO: проверить правильные результаты выдаёт обновлённая функция.
 		import shapefile as shp
 		import geocalc
 		from shapely.geometry import Polygon,Point
@@ -218,7 +217,6 @@ class metaData:
 		for sp in sf.shapes():
 			lonmin,latmin,lonmax,latmax=sp.bbox
 			lonmin,lonmax=geocalc.cLon(lonmin),geocalc.cLon(lonmax)
-			print 'lonmin,latmin,lonmax,latmax',lonmin,latmin,lonmax,latmax
 			if lonmin<0 or lonmax<0:
 				polygonPoints=[[geocalc.cLon(cors[0]),cors[1]] for cors in sp.points]
 			else:
