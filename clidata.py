@@ -359,9 +359,11 @@ class cliData:
 			if i<iStart or i>=iStop:
 				sdat.append([None for l,mn in seasIndList])
 			else:
-				sdat.append([(self.data[i+l,mn] if self.data.mask[i+l,mn]==False else None) for l,mn in seasIndList])
-		sdatMasked=np.ma.masked_values(sdat, None)
-		np.place(sdatMasked, np.ma.getmaskarray(sdatMasked), [-999.99])
+				if self.data.mask.any():
+					sdat.append([(self.data[i+l,mn] if self.data.mask[i+l,mn]==False else self.filledValue) for l,mn in seasIndList])
+				else:
+					sdat.append([self.data[i+l,mn] for l,mn in seasIndList])
+		sdatMasked=np.ma.masked_values(sdat, self.filledValue)
 		return sdatMasked
 
 
@@ -382,13 +384,17 @@ class cliData:
 		в интервале yMin - yMax
 		"""
 		yMin, yMax,i1,i2 = self.setPeriod(yMin, yMax)
-		res=[],[]
+		res,time=[],[]
 		for yobj in self[yMin:yMax]:
 			f = getattr(yobj, functName)
-			r=f(*params)
+			try:
+				r=f(*params)
+			except TypeError:
+				r=f
 			if converter is not None: r=converter(r)
 			res.append(r)
-		return res
+			time.append(yobj.year)
+		return res,time
 
 
 	@cache
@@ -718,14 +724,20 @@ class yearData:
 	def s_avg(self, seasToCalc=False):
 		""" возвращает среднюю температуру за каждый сезон """
 		res=dict()
-		if seasToCalc==False: seasToCalc=[sn for sn in self.parent.seasonsCache]
+		if seasToCalc==False:
+			seasToCalc=[sn for sn in self.parent.seasonsCache]
 		dat=self.parent.getSeasonsData(seasToCalc)
-		yInd=self.parent.timeInds[self.year]
-		for sname in seasToCalc:
-			if dat[sname][yInd].mask.any():
+		if self.year in self.parent.timeInds:
+			yInd=self.parent.timeInds[self.year]
+			for sname in seasToCalc:
+				if dat[sname][yInd].mask.any():
+					res[sname]=None
+				else:
+					res[sname]=cc.avg(dat[sname][yInd],precision=self.precision)
+		else:
+			for sname in seasToCalc:
 				res[sname]=None
-			else:
-				res[sname]=cc.avg(dat[sname][yInd],precision=self.precision)
+
 		return res
 
 
