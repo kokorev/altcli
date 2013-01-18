@@ -18,7 +18,7 @@ class tempData(cliData):
 
 	def ddt(self, minY=0, maxY=0):
 		minY, maxY, minInd, maxInd = self.minmaxInd(minY, maxY)
-		res = [cc.sumMoreThen(y[1].vals, 0) for y in self.data[minInd:maxInd + 1]]
+		res = [cc.sumMoreThen(y[1].vals, 0)*30.5 for y in self.data[minInd:maxInd + 1]]
 		time = [y[0] for y in self.data[minInd:maxInd + 1]]
 		return res,time
 
@@ -64,6 +64,7 @@ class metaData:
 		try:
 			meta['dt'] = self.cfg.elSynom[meta['dt']]
 		except KeyError:
+			print meta['dt']
 			raise KeyError, "dt field is not exist or has unknown value"
 		if self.dataConnection is not None:
 			meta.update(self.dataConnection.cliSetMeta)
