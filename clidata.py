@@ -305,22 +305,42 @@ class cliData:
 		может принимать как словарь {'название сезона': [список месяцов]} так и списоко имён сезонов
 		"""
 		res=dict()
-		if type(seasons) is str: seasons=[seasons]
-		if type(seasons) is list: seasons={sn:self.seasonsCache[sn]['mlist'] for sn in seasons}
-		for sname,mlist in seasons.items():
-			if sname in self.seasonsCache and self.seasonsCache[sname]['mlist']!=mlist:
-				# имя сезона есть в списке сохранённых
-				# но списко месяцев для не совпадает с заданым, перезаписываем с предупреждением
-				print 'Warning! season %s will be redefine. Cache will cleaned :-('%sname
-				self.seasonsCache[sname]['mlist']=mlist
-				self.seasonsCache[sname]['dat']=self._calcSeasonData(mlist)
-				self.clearcache()
-			else:
-				# сезон используется впервые, добавляем его в кэш
+		def workStrSeas(seas):
+			if type(seas) is str:
+				if seas in self.seasonsCache:
+					season={seas:None}
+				else:
+					raise KeyError, "There is no season %s in seasonsCache. Set seasons in dict not string form"%seas
+			return season
+
+		teastedSeas=dict()
+		if type(seasons) is list:
+			for val in seasons:
+				if type(val) is str:
+					val=workStrSeas(val)
+					teastedSeas.update(val)
+				else:
+					raise ValueError, "Seasons should be a list of string or dict"
+		elif type(seasons) is str:
+			teastedSeas.update(workStrSeas(seasons))
+		elif type(seasons) is dict:
+			for sname, mlist in seasons.items():
+				if sname in self.seasonsCache:
+					if mlist==self.seasonsCache[sname]['mlist']:
+						teastedSeas.update({sname:None})
+					else:
+						print 'Warning! season %s will be redefine. Cache will cleaned :-('%sname
+						self.seasonsCache[sname]=dict()
+						self.clearcache()
+				else:
+					teastedSeas.update({sname:mlist})
+		else:
+			raise ValueError, "Seasons should be string, list of string or dict"
+		for sname,mlist in teastedSeas.items():
+			if mlist is not None:
 				self.seasonsCache[sname]=dict()
 				self.seasonsCache[sname]['mlist']=mlist
 				self.seasonsCache[sname]['dat']=self._calcSeasonData(mlist)
-			# берём значение из кэша
 			res[sname]=self.seasonsCache[sname]['dat']
 		return res
 
@@ -335,14 +355,11 @@ class cliData:
 	@cache
 	def _calcSeasonData(self,mlist):
 		"""
-		Возвращает значения за сезон
-		{'название сезона': [массив значений(маскированный), список лет в массиве]}
+		Возвращает значения за сезон (маскированный) индексы в котором соответствуют self.timeInds
 		"""
 		seasIndList=[]
 		iStart,iStop=0,len(self.data)
 		sdat=[]
-		sYlist=[]
-		res=np.zeros(len(self.yList))
 		for m in mlist:
 			if 1<=m<=12:
 				seasIndList.append([0,m-1])
@@ -355,9 +372,9 @@ class cliData:
 			else:
 				print mlist
 				raise ValueError, 'Неверно задан сезон'
-		for i in range(0,len(self.data)):
+		for i,year in enumerate(self.yList):
 			if i<iStart or i>=iStop:
-				sdat.append([None for l,mn in seasIndList])
+				sdat.append([self.filledValue for l,mn in seasIndList])
 			else:
 				if self.data.mask.any():
 					sdat.append([(self.data[i+l,mn] if self.data.mask[i+l,mn]==False else self.filledValue) for l,mn in seasIndList])
@@ -375,7 +392,7 @@ class cliData:
 		"""
 		yMin, yMax,i1,i2 = self.setPeriod(yMin, yMax)
 		dat,yList=self.getSeasonsData(season)
-		return [round(d.mean(), self.precision) for d in dat[i1:i2+1]],yList
+		return [round(d.mean(), self.precision) if not d.any() else None for d in dat[i1:i2+1]],yList
 
 
 	def getParamSeries(self,functName, params=[], yMin=-1, yMax=-1, converter=None):
@@ -425,9 +442,9 @@ class cliData:
 		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
 		sdat=self.getSeasonsData(seasToCalc)
 		res=dict()
-		for sname in seasToCalc:
-			dat=sdat[sname]
-			res[sname]=round(dat[i1:i2+1,:].mean(), self.precision)
+		for sname in sdat:
+			dat=sdat[sname][i1:i2+1,:]
+			res[sname]=round(dat.mean(), self.precision) if not dat.any() else None
 		return res
 
 
@@ -521,9 +538,9 @@ class cliData:
 		sdat=self.getSeasonsData(seasToCalc)
 		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
 		res=dict()
-		for sname in seasToCalc:
+		for sname in sdat:
 			norm=self.s_norm(normMinY, normMaxY, seasToCalc=sname)
-			dat=self.getSeasonSeries(sname)
+			dat=[round(d.mean(), self.precision) if not d.any() else None for d in sdat[sname][i1:i2+1]]
 			res[sname]=[[round(dat[i]-norm, self.precision) for i in range(i1,i2+1)]]
 		return res
 
@@ -638,7 +655,7 @@ class yearData:
 					retval = None
 			else:
 				retval = None
-		return retval if retval!=self.data.fill_value else None
+		return round(retval,self.precision) if retval!=self.data.fill_value else None
 
 
 	def getSeasonsData(self,seasons):
@@ -702,7 +719,7 @@ class yearData:
 		if seasToCalc==False: seasToCalc=[sn for sn in self.parent.seasonsCache]
 		dat=self.parent.getSeasonsData(seasToCalc)
 		yInd=self.parent.timeInds[self.year]
-		for sname in seasToCalc:
+		for sname in dat:
 			if dat[sname][yInd].mask.any():
 				res[sname]=None
 			else:
@@ -729,7 +746,7 @@ class yearData:
 		dat=self.parent.getSeasonsData(seasToCalc)
 		if self.year in self.parent.timeInds:
 			yInd=self.parent.timeInds[self.year]
-			for sname in seasToCalc:
+			for sname in dat:
 				if dat[sname][yInd].mask.any():
 					res[sname]=None
 				else:
@@ -737,7 +754,6 @@ class yearData:
 		else:
 			for sname in seasToCalc:
 				res[sname]=None
-
 		return res
 
 
@@ -772,7 +788,7 @@ class yearData:
 		if seasToCalc==False: seasToCalc=[sn for sn in self.parent.seasonsCache]
 		dat=self.parent.getSeasonsData(seasToCalc)
 		yInd=self.parent.timeInds[self.year]
-		for sname in seasToCalc:
+		for sname in dat:
 			if dat[sname][yInd].mask.any():
 				res[sname]=None
 			else:
