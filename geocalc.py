@@ -2,6 +2,7 @@
 """
 Общие функции геометрии и картографии
 """
+from voronoi import *
 
 def cLon(lon):
 	""" Convert longitude to 181+ format """
@@ -44,6 +45,8 @@ def calcDist(lat1, lon1, lat2, lon2):
 
 def isPointInPoly(x, y, poly):
 	"""
+	Устаревшая - рекомендуется использовать встроенную ф-ю библиотеки shapely
+
 	впомогательная ф-я, проверяет нахдиться ли точка (x,y) внутри полигона Poly
 	использует ray casting алгоритм. (не работает в точках лежащих на линии плоигона (может вернуть как true так и false))
 	используеться классом metaData
@@ -63,3 +66,72 @@ def isPointInPoly(x, y, poly):
 						inside = not inside
 		p1x, p1y = p2x, p2y
 	return inside
+
+
+def shpFile2shpobj(fn):
+	"""
+	Читает shp файл, возвращает объект shapely или список объектов
+	В настоящий момент пытается считать всё в полигоны
+	"""
+	#TODO: Сделать проверку на тип информации в файле (полигон, линия, точки) и читать каждый тип в правлиьный объект
+	import shapefile as shp
+	from shapely.geometry import Polygon
+	sf = shp.Reader(fn)
+	if len(sf.shapes())>1:
+		res=[]
+	for sp in sf.shapes():
+		lonmin,latmin,lonmax,latmax=sp.bbox
+		lonmin,lonmax=cLon(lonmin),cLon(lonmax)
+		if lonmin<0 or lonmax<0:
+			polygonPoints=[[cLon(cors[0]),cors[1]] for cors in sp.points]
+		else:
+			polygonPoints=sp.points
+		poly=Polygon(polygonPoints)
+		if len(sf.shapes())>1:
+			res.append(poly)
+		else:
+			res=poly
+	return res
+
+
+def voronoi(cdl,maskPoly):
+	"""
+	Расчитывает полигоны тиссена для каждой станции из cdl ограниченые контуром полигона
+	Возвращает словарь {индекс станции: Полигон shapely}
+	Если у станции нету полигона внутри задоного контура, будет стоять None
+	"""
+	from voronoi import voronoi_poly
+	from shapely.geometry import Point
+	from clidataSet import metaData
+	pl=dict()
+	if type(cdl)==dict:
+		pl=cdl
+	elif isinstance(cdl, metaData):
+		pl={st.meta['ind']:(st.meta['lon'], st.meta['lat']) for st in cdl}
+	else:
+		raise ValueError, "First argument should be {ind:(lat, lon)} dict or metaData instance"
+	vl=voronoi_poly.VoronoiPolygons(pl, PlotMap=False)
+	result=dict()
+	for ind, r in vl.items():
+		res=maskPoly.intersection(r['obj_polygon'])
+		if res.geom_type=='MultiPolygon':
+			point=Point(r["coordinate"][0],r["coordinate"][1])
+			for ply in res.geoms:
+				if ply.contains(point):
+					res=ply
+					break
+			else:
+				plylist=[v for v in res.geoms]
+				plylist.sort(key=lambda a: a.area)
+				res=plylist[-1]
+		elif res.geom_type=='GeometryCollection':
+			if res.is_empty:
+				res=None
+			else:
+				print res
+		elif res.geom_type=='Polygon':
+			pass
+		else:
+			print res
+		result[r['info']]=res
+	return result
