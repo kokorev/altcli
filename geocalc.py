@@ -107,10 +107,15 @@ def voronoi(cdl,maskPoly):
 	if type(cdl)==dict:
 		pl=cdl
 	elif isinstance(cdl, metaData):
-		pl={st.meta['ind']:(st.meta['lon'], st.meta['lat']) for st in cdl}
+		pl={ind:(meta['lon'], meta['lat']) for ind,meta in cdl.stMeta.items()}
 	else:
 		raise ValueError, "First argument should be {ind:(lat, lon)} dict or metaData instance"
-	vl=voronoi_poly.VoronoiPolygons(pl, PlotMap=False)
+	lats=[meta['lat'] for ind,meta in cdl.stMeta.items()]
+	lons=[meta['lon'] for ind,meta in cdl.stMeta.items()]
+	box=list(maskPoly.bounds) #(minx, miny, maxx, maxy) [90, -180, -90, 180]
+	bbox=[max(lats) if max(lats)>box[3] else box[3],min(lons) if min(lons)<box[0] else box[0],
+	      min(lats) if min(lats)<box[1] else box[1],max(lons) if max(lons)>box[2] else box[2]]
+	vl=voronoi_poly.VoronoiPolygons(pl, PlotMap=False, BoundingBox=bbox)
 	result=dict()
 	for ind, r in vl.items():
 		res=maskPoly.intersection(r['obj_polygon'])
