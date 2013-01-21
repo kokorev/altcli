@@ -117,3 +117,12 @@ def insertNone(vals,time):
 		rv.append(vals[tind])
 		rt.append(t)
 	return rv,rt
+
+
+def removeNone(vals,time):
+	vl,tm=[],[]
+	for v,t in zip(vals,time):
+		if v is None or t is None: continue
+		vl.append(v)
+		tm.append(t)
+	return vl,tm
