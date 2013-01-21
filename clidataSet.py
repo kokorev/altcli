@@ -263,7 +263,7 @@ class metaData:
 			if dat.mask.all():continue
 			r=np.ma.average(dat,axis=0, weights=ws)
 			gdat.append([year,list(r.data)])
-		cdo=cliData({'dt':self.meta['dt'],'ind':0,'lat':0,'lon':0}, gdat)
+		cdo=cliData({'dt':self.meta['dt'],'ind':0,'lat':0,'lon':0, 'stUsed':sum([1 for i in weight if weight[i]!=0])}, gdat)
 		return cdo
 
 
