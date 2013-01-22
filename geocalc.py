@@ -103,6 +103,7 @@ def voronoi(cdl,maskPoly):
 	from voronoi import voronoi_poly
 	from shapely.geometry import Point
 	from clidataSet import metaData
+	import shapely.geos
 	pl=dict()
 	if type(cdl)==dict:
 		pl=cdl
@@ -118,7 +119,11 @@ def voronoi(cdl,maskPoly):
 	vl=voronoi_poly.VoronoiPolygons(pl, PlotMap=False, BoundingBox=bbox)
 	result=dict()
 	for ind, r in vl.items():
-		res=maskPoly.intersection(r['obj_polygon'])
+		try:
+			res=maskPoly.intersection(r['obj_polygon'])
+		except shapely.geos.TopologicalError:
+			result[r['info']]=None
+			continue
 		if res.geom_type=='MultiPolygon':
 			point=Point(r["coordinate"][0],r["coordinate"][1])
 			for ply in res.geoms:
