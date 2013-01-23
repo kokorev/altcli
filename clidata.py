@@ -13,11 +13,11 @@ import clicomp as cc
 import numpy as np
 
 def saveRes(method):
-	import functools
 	"""
 	Декоратор. Сохраняет результат работы функции в словарь self.res
 	Ключ слваря составляется по форме "имя функции--список значений аргументов через запятую"
 	"""
+	import functools
 	@functools.wraps(method)
 	def wrapper(self, *args, **kwargs):
 		dictId = getSaveResId(method, *args, **kwargs)
@@ -91,6 +91,16 @@ def cache(method):
 	return wrapper
 
 
+class noDataException(Exception):
+	def __init__(self, yMin,yMax):
+		self.yMin = yMin
+		self.yMax = yMax
+	def __str__(self):
+		return "There is no date avaliable in %i - %i interval on this station"%(self.yMin,self.yMax)
+
+
+
+
 class cliData:
 	"""
 	Класс реализующий функции загрузки и обработки климатических данных не зависящих от их типа
@@ -134,8 +144,8 @@ class cliData:
 		if len(self.yList) == 0: raise ValueError, 'Не пропущенные значения отсутствуют'
 		self.timeInds={y:i for i,y in enumerate(self.yList)}
 		self.yMin, self.yMax = min(self.yList), max(self.yList)
-		meta['yMin'] = self.yMin
-		meta['yMax'] = self.yMax
+		self.meta['yMin'] = self.yMin
+		self.meta['yMax'] = self.yMax
 
 
 	def __getitem__(self, item):
@@ -294,9 +304,18 @@ class cliData:
 
 
 	def setPeriod(self, yMin, yMax):
+		userYMin,userYMax=yMin,yMax
 		yMin = self.meta['yMin'] if (yMin == -1) or (yMin < self.meta['yMin']) else yMin
 		yMax = self.meta['yMax'] if (yMax == -1) or (yMax > self.meta['yMax']) else yMax
-		return yMin, yMax, self.timeInds[yMin], self.timeInds[yMax]
+		while yMin not in self.timeInds:
+			if not yMin<yMax: raise noDataException(userYMin,userYMax)
+			yMin+=1
+		iMin=self.timeInds[yMin]
+		while yMax not in self.timeInds:
+			if not yMin<yMax: raise noDataException(userYMin,userYMax)
+			yMax-=1
+		iMax=self.timeInds[yMax]
+		return yMin, yMax, iMin, iMax
 
 
 	def getSeasonsData(self,seasons):
@@ -800,6 +819,7 @@ if __name__ == "__main__":
 	acd=cliData.load('test')
 	res=acd.anomal(1961,1990)
 	#print res
+	raise noDataException(1960,1990)
 	print acd.trend()
 	#{'summer':-0.542, 'winter':-29.51, 'year':-16.095}
 	#print acd.s_norm(1961,1964, {"year": range(1, 13), "summer": [6, 7, 8], "winter": [-1, 1, 2]})
