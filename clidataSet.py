@@ -228,7 +228,7 @@ class metaData:
 				lat,lon=self.stMeta[ind]['lat'], geocalc.cLon(self.stMeta[ind]['lon'])
 				pnt=Point(lon,lat)
 				if poly.contains(pnt): res.append(ind)
-		return res
+		return list(set(res))
 
 	#TODO: функция нахождения станция прилежащих к полигону
 
