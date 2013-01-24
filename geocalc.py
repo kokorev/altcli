@@ -94,7 +94,7 @@ def shpFile2shpobj(fn):
 	return res
 
 
-def voronoi(cdl,maskPoly):
+def voronoi(cdl,maskPoly,showMap=False):
 	"""
 	Расчитывает полигоны тиссена для каждой станции из cdl ограниченые контуром полигона
 	Возвращает словарь {индекс станции: Полигон shapely}
@@ -144,4 +144,15 @@ def voronoi(cdl,maskPoly):
 		else:
 			print res
 		result[r['info']]=res
+
+	if showMap is True:
+		from pylab import fill,show
+		for i,poly in result.items():
+			if poly is None: continue
+			x,y=[],[]
+			for point in list(poly.exterior.coords):
+				x.append(point[0])
+				y.append(point[1])
+			fill(x,y, alpha=0.6)
+		show()
 	return result
