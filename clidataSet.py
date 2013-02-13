@@ -216,6 +216,7 @@ class metaData:
 		res=[]
 		sf = shp.Reader(shpfile)
 		for sp in sf.shapes():
+			res_tmp=[]
 			lonmin,latmin,lonmax,latmax=sp.bbox
 			lonmin,lonmax=geocalc.cLon(lonmin),geocalc.cLon(lonmax)
 			if lonmin<0 or lonmax<0:
@@ -227,7 +228,8 @@ class metaData:
 			for ind in indsInBox:
 				lat,lon=self.stMeta[ind]['lat'], geocalc.cLon(self.stMeta[ind]['lon'])
 				pnt=Point(lon,lat)
-				if poly.contains(pnt): res.append(ind)
+				if poly.contains(pnt): res_tmp.append(ind)
+			res=res+res_tmp
 		return res
 
 	#TODO: функция нахождения станция прилежащих к полигону
@@ -263,7 +265,8 @@ class metaData:
 			if dat.mask.all():continue
 			r=np.ma.average(dat,axis=0, weights=ws)
 			gdat.append([year,list(r.data)])
-		cdo=cliData({'dt':self.meta['dt'],'ind':0,'lat':0,'lon':0, 'stUsed':sum([1 for i in weight if weight[i]!=0])}, gdat)
+		numStUsed=sum([1 for i in weight if weight[i]!=0]) if weight is not None else len(self)
+		cdo=cliData({'dt':self.meta['dt'],'ind':0,'lat':0,'lon':0, 'stUsed':numStUsed}, gdat)
 		return cdo
 
 
