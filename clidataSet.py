@@ -71,6 +71,7 @@ class metaData:
 		self.meta = meta
 		self.minInd = 0
 
+	#todo: добавить функцию добавления станций из подключённых данных
 
 	@staticmethod
 	def load(fn):
@@ -169,7 +170,9 @@ class metaData:
 		if self.thisInd >= len(self.stInds): raise StopIteration
 		ret = self.stInds[self.thisInd]
 		self.thisInd += 1
-		return self.clidatObjects[ret]
+		if len(self.clidatObjects)==0: raise ValueError, "unable to iterate - self.clidatObjects is empty"
+		res=self.clidatObjects[ret]
+		return res
 
 
 	def addSt(self, stListToAdd):
