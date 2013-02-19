@@ -395,7 +395,7 @@ class cliData:
 			if i<iStart or i>=iStop:
 				sdat.append([self.filledValue for l,mn in seasIndList])
 			else:
-				if self.data.mask.any():
+				if not np.ma.all(self.data):
 					sdat.append([(self.data[i+l,mn] if self.data.mask[i+l,mn]==False else self.filledValue) for l,mn in seasIndList])
 				else:
 					sdat.append([self.data[i+l,mn] for l,mn in seasIndList])
@@ -403,15 +403,15 @@ class cliData:
 		return sdatMasked
 
 
-	@cache
-	def getSeasonSeries(self, season, yMin= -1, yMax= -1):
-		"""
-		возвращает ряд средних по сезоном для каждого года в интервале
-		Аллиас устаревшей retS_avgData
-		"""
-		yMin, yMax,i1,i2 = self.setPeriod(yMin, yMax)
-		dat,yList=self.getSeasonsData(season)
-		return [round(d.mean(), self.precision) if not d.any() else None for d in dat[i1:i2+1]],yList
+#	@cache
+#	def getSeasonSeries(self, season, yMin= -1, yMax= -1):
+#		"""
+#		возвращает ряд средних по сезоном для каждого года в интервале
+#		Аллиас устаревшей retS_avgData
+#		"""
+#		yMin, yMax,i1,i2 = self.setPeriod(yMin, yMax)
+#		dat,yList=self.getSeasonsData(season)
+#		return [round(d.mean(), self.precision) if not d.any() else None for d in dat[i1:i2+1]],yList
 
 
 	def getParamSeries(self,functName, params=[], yMin=-1, yMax=-1, converter=None):
@@ -462,8 +462,8 @@ class cliData:
 		sdat=self.getSeasonsData(seasToCalc)
 		res=dict()
 		for sname in sdat:
-			dat=sdat[sname][i1:i2+1,:]
-			res[sname]=round(dat.mean(), self.precision) if not dat.any() else None
+			dat=list(sdat[sname][i1:i2+1,:])
+			res[sname]=round(np.ma.mean(dat), self.precision) if np.ma.any(dat) else None
 		return res
 
 
@@ -621,6 +621,7 @@ class yearData:
 	и могут вызываться как свойства
 	"""
 	def __init__(self, year, parent):
+		import copy
 		self.__name__ = 'yearData'
 		self.year = year
 		self.parent = parent
