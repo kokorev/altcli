@@ -135,11 +135,16 @@ class cliData:
 		d=[ln for ln in gdat if ln[1].count(fillValue)<12]
 		try:
 			self.data=np.ma.masked_values([strdat[1] for strdat in d], fillValue)
+			#self.noGaps=False
 		except TypeError:
+			raise
 			# если нет пропусков
-			self.data=np.array([strdat[1] for strdat in d])
-		else:
-			if fillValue is None: np.place(self.data, np.ma.getmaskarray(self.data), [self.filledValue])
+			#self.data=np.array([strdat[1] for strdat in d])
+			#self.noGaps=True
+
+		if fillValue is None: np.place(self.data, np.ma.getmaskarray(self.data), [self.filledValue])
+		#маска всегда должны быть массивом, иначе сложно проверить не пропущено ли значение
+		self.data.mask=np.ma.getmaskarray(self.data)
 		self.yList=[strdat[0] for strdat in d]
 		if len(self.yList) == 0: raise ValueError, 'Не пропущенные значения отсутствуют'
 		self.timeInds={y:i for i,y in enumerate(self.yList)}
@@ -626,9 +631,10 @@ class yearData:
 		self.year = year
 		self.parent = parent
 		if year in parent.timeInds:
-			self.data=parent.data[parent.timeInds[year]]
+			self.data=copy.deepcopy(parent.data[parent.timeInds[year]])
 		else:
 			self.data=np.ma.masked_values([parent.filledValue]*12, parent.filledValue)
+		self.data.mask=np.ma.getmaskarray(self.data)
 		self.res = dict()
 		self.precision=parent.precision
 		self.meta=self.parent.meta
@@ -746,6 +752,88 @@ class yearData:
 				res[sname]=cc.ampl(dat[sname][yInd],precision=self.precision)
 		return res
 
+	def crossingPoints(self, x):
+		"""
+		Расчитывает даты перехода через ноль
+		"""
+		from datetime import datetime,timedelta
+		points=[]
+		y=self.year
+		dat=[[datetime(y,m,15), self[m]] for m in range(1,13)]
+		if None in [v[1] for v in dat]:	return None
+		dat+=[[datetime(y-1,12,15), self.parent[y-1][12]],[datetime(y+1,1,15), self.parent[y+1][1]]]
+		dat.sort(key=lambda a:a[0])
+		for i in range(len(dat)-1):
+			d1,v1=dat[i]
+			d2,v2=dat[i+1]
+			if v1 is None or v2 is None: continue
+			if v1<x<=v2 or v1>x>=v2:
+				time=(d2-d1).days
+				vs=[v1,v2]
+				sp=(max(vs)-min(vs))/float(time)
+				addTime=abs((v1-x)/float(sp))
+				pt=d1+timedelta(days=addTime)
+				if pt.year==y: points.append(pt)
+		points.sort()
+		return points
+
+
+	@saveRes
+	def sumMoreThen(self,x, c='GT'):
+		"""
+		Уточнённый алгоритм расчёта градусо дней
+		"""
+		from datetime import datetime as dt
+		if c=='GT':
+			ct=lambda v: v>x
+			ce=lambda v: v>=x
+		elif c=='LT':
+			ct=lambda v: v<x
+			ce=lambda v: v<=x
+		else:
+			raise ValueError, "c = GT | LT"
+		y=self.year
+		dat=[]
+		for yObj in [self, self.parent[y+1]]:
+			dat+=[[dt(yObj.year,m,15), yObj[m]] for m in range(1,13) if yObj[m] is not None]
+			points=yObj.crossingPoints(x)
+			if points is None and yObj.year==y:
+				return None,None
+			elif points is None and yObj.year!=y:
+				continue
+			else:
+				dat+=[[p,x] for p in points]
+		#массив дат и значений точек переходов и наблюдений за этот и следующий год, отсортированый по времени
+		dat.sort(key=lambda a:a[0])
+		psum=0
+		tsum=0
+		start=False
+		for i in range(len(dat)-1):
+			d1,v1=dat[i]
+			d2,v2=dat[i+1]
+			if v1==x: start=True
+			if not start: continue
+			t=(d2-d1).days
+			if (ce(v1) and ct(v2)):
+				# начало иди продолжение
+				psum+=(t*abs(v2-v1))/2. + t*abs(min([v2,v1]))
+				tsum+=t
+			elif (ct(v1) and ce(v2)):
+				#если промежуток от этотой точки до следующей попадает под условие
+				if (v2==x and d1.year>y):
+					break # если период заканчивается в следующем году
+				psum+=(t*abs(v2-v1))/2. + t*abs(min([v2,v1]))
+				tsum+=t
+			elif v1<x<v2 or v1>x>v2:
+				# если пропущена точка перехода
+				psum,tsum=None,None
+				break
+			else:
+				continue
+		else:
+			psum,tsum=None,None
+		return psum,tsum
+
 
 	@property
 	def ampl(self):
@@ -787,11 +875,11 @@ class yearData:
 		return r
 
 
-	@saveRes
-	def sumMoreThen(self, x):
-		""" Возвращает сумму значений больше X """
-		r=cc.sumMoreThen([v if not m else None for v,m in zip(self.data, self.data.mask)],x,precision=self.precision)
-		return r
+#	@saveRes
+#	def sumMoreThen(self, x):
+#		""" Возвращает сумму значений больше X """
+#		r=cc.sumMoreThen([v if not m else None for v,m in zip(self.data, self.data.mask)],x,precision=self.precision)
+#		return r
 
 
 	@saveRes
@@ -818,10 +906,11 @@ class yearData:
 
 if __name__ == "__main__":
 	acd=cliData.load('test')
+	for y in acd:
+		print y.summerLength()
 	res=acd.anomal(1961,1990)
-	#print res
-	raise noDataException(1960,1990)
-	print acd.trend()
+	#raise noDataException(1960,1990)
+	#print acd.trend()
 	#{'summer':-0.542, 'winter':-29.51, 'year':-16.095}
 	#print acd.s_norm(1961,1964, {"year": range(1, 13), "summer": [6, 7, 8], "winter": [-1, 1, 2]})
 
