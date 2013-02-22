@@ -48,20 +48,23 @@ def interannualVariability(vals,time,trend=[None,None],fn=None,smoothing=None, x
 	if smoothing is not None:
 		av,at=movingAvg(vals,time, smoothing)
 		ax.plot(at, av, '-', color='#fb2e2e', linewidth=2.5)
-	if not None in trend:
-		if trend[0]==-1: trend[0]=min(time)
-		if trend[1]==-1: trend[1]=max(time)
-		ind1=time.index(trend[0])
-		ind2=time.index(trend[1])
-		valsT = vals[ind1:ind2+1]
-		timeT = time[ind1:ind2+1]
-		if None in vals:
-			valsT,timeT=removeNone(valsT,timeT)
-		if len(valsT)>10:
-			sl2, inter2, r_value2, p_value2, std_err2 = stats.linregress(timeT, valsT)
+
+	if trend[0]==-1: trend[0]=min(time)
+	if trend[1]==-1: trend[1]=max(time)
+	ind1=time.index(trend[0])
+	ind2=time.index(trend[1])
+	valsT = vals[ind1:ind2+1]
+	timeT = time[ind1:ind2+1]
+	if None in vals:
+		valsT,timeT=removeNone(valsT,timeT)
+	if len(valsT)>10:
+		sl2, inter2, r_value2, p_value2, std_err2 = stats.linregress(timeT, valsT)
+		stat=dict({'slope':sl2, 'intercept':inter2, 'r':r_value2, 'p':p_value2, 'std':std_err2,
+		           'yMin':min(timeT), 'yMax':max(timeT)})
+		if not None in trend:
 			ax.plot([yMin, yMax], [inter2+sl2*yMin, sl2*max(time)+inter2], '--', color='black', linewidth=2)
-		else:
-			print 'Not enough data to estimate trend'
+	else:
+		print 'Not enough data to estimate trend'
 	# set axis limits
 	x1,x2,y1,y2 = ax.axis()
 	ax.axis((xLim[0] if xLim[0] else x1, xLim[1] if xLim[1] else x2,
@@ -80,3 +83,4 @@ def interannualVariability(vals,time,trend=[None,None],fn=None,smoothing=None, x
 	else:
 		plt.show()
 	plt.close(fig)
+	return stat
