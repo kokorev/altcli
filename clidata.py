@@ -137,7 +137,9 @@ class cliData:
 			self.data=np.ma.masked_values([strdat[1] for strdat in d], fillValue)
 			#self.noGaps=False
 		except TypeError:
-			raise
+			print 'It look like there is no gaps in your data. Are you sure??'
+			self.data=np.ma.masked_values([strdat[1] for strdat in d], -999.99)
+			#raise
 			# если нет пропусков
 			#self.data=np.array([strdat[1] for strdat in d])
 			#self.noGaps=True
@@ -158,6 +160,18 @@ class cliData:
 		Системная функция отвечающая за обработки оператора []
 		возвращает экземпляр yearData
 		"""
+		def createYearDataObj(self, item):
+			"""
+			Функция определяет какой класс использовать при создании объекта yearData в зависимости от типа данных
+			"""
+			if self.meta['dt'] in ['prec', 'pr']:
+				r=prec_yearData(item,self)
+			elif self.meta['dt'] in ['temp', 'tas']:
+				r=temp_yearData(item,self)
+			else:
+				r=yearData(item,self)
+			return r
+
 		if isinstance(item, slice):
 			start = item.start if item.start >= self.yMin else self.yMin
 			stop = item.stop if item.stop <= self.yMax else self.yMax
@@ -172,11 +186,11 @@ class cliData:
 				if item in self.yearObjects:
 					val=self.yearObjects[item]
 				else:
-					val=yearData(item,self)
+					val=createYearDataObj(self,item)
 					self.yearObjects[item]=val
 			else:
 				self.cfg.logThis("нет данных для года " + str(item) + " на станции" + str(self.meta['ind']))
-				val=yearData(item,self)
+				val=createYearDataObj(self,item)
 				self.yearObjects[item]=val
 		return val
 
@@ -752,6 +766,73 @@ class yearData:
 				res[sname]=cc.ampl(dat[sname][yInd],precision=self.precision)
 		return res
 
+
+	@property
+	def ampl(self):
+		""" возвращает амплитуду значений за данный год """
+		if self.data.mask.any():
+			r=None
+		else:
+			vals=[v if not m else None for v,m in zip(self.data,self.data.mask)]
+			r=cc.ampl(vals)
+		return r
+
+
+	def s_avg(self, seasToCalc=False):
+		""" возвращает среднюю температуру за каждый сезон """
+		res=dict()
+		if seasToCalc==False:
+			seasToCalc=[sn for sn in self.parent.seasonsCache]
+		dat=self.parent.getSeasonsData(seasToCalc)
+		if self.year in self.parent.timeInds:
+			yInd=self.parent.timeInds[self.year]
+			for sname in dat:
+				if dat[sname][yInd].mask.any():
+					res[sname]=None
+				else:
+					res[sname]=cc.avg(dat[sname][yInd],precision=self.precision)
+		else:
+			for sname in seasToCalc:
+				res[sname]=None
+		return res
+
+
+	@property
+	def avg(self):
+		""" возвращает среднегодовую температуру """
+		if self.missedMonth==0:
+			r=round(self.data.mean(),self.precision)
+		else:
+			r=None
+		return r
+
+
+#	@saveRes
+#	def sumLessThen(self, x):
+#		""" Возвращает сумму значений больше X """
+#		r=cc.sumLessThen([v if not m else None for v,m in zip(self.data, self.data.mask)],x,precision=self.precision)
+#		return r
+
+
+#	@saveRes
+#	def s_sumMoreThen(self, x, seasToCalc=False):
+#		""" Возвращает кортеж значений больше Х для каждого сезона """
+#		res=dict()
+#		if seasToCalc==False: seasToCalc=[sn for sn in self.parent.seasonsCache]
+#		dat=self.parent.getSeasonsData(seasToCalc)
+#		yInd=self.parent.timeInds[self.year]
+#		for sname in dat:
+#			if dat[sname][yInd].mask.any():
+#				res[sname]=None
+#			else:
+#				res[sname]=cc.sumMoreThen(dat[sname][yInd],x, precision=self.precision)
+#		return res
+
+
+class temp_yearData(yearData):
+	"""
+	Функции спецефичные для рядов температуры
+	"""
 	def crossingPoints(self, x):
 		"""
 		Расчитывает даты перехода через ноль
@@ -779,7 +860,7 @@ class yearData:
 
 
 	@saveRes
-	def sumMoreThen(self,x, c='GT'):
+	def conditionalSum(self,x, c='GT'):
 		"""
 		Уточнённый алгоритм расчёта градусо дней
 		"""
@@ -832,82 +913,52 @@ class yearData:
 				continue
 		else:
 			psum,tsum=None,None
+		if psum is not None: psum= round(psum, self.precision)
 		return psum,tsum
 
 
-	@property
-	def ampl(self):
-		""" возвращает амплитуду значений за данный год """
-		if self.data.mask.any():
-			r=None
-		else:
-			vals=[v if not m else None for v,m in zip(self.data,self.data.mask)]
-			r=cc.ampl(vals)
-		return r
+class prec_yearData(yearData):
+	"""
 
-
-	def s_avg(self, seasToCalc=False):
-		""" возвращает среднюю температуру за каждый сезон """
-		res=dict()
-		if seasToCalc==False:
-			seasToCalc=[sn for sn in self.parent.seasonsCache]
-		dat=self.parent.getSeasonsData(seasToCalc)
-		if self.year in self.parent.timeInds:
-			yInd=self.parent.timeInds[self.year]
-			for sname in dat:
-				if dat[sname][yInd].mask.any():
-					res[sname]=None
-				else:
-					res[sname]=cc.avg(dat[sname][yInd],precision=self.precision)
-		else:
-			for sname in seasToCalc:
-				res[sname]=None
-		return res
-
-
-	@property
-	def avg(self):
-		""" возвращает среднегодовую температуру """
-		if self.missedMonth==0:
-			r=round(self.data.mean(),self.precision)
-		else:
-			r=None
-		return r
-
-
-#	@saveRes
-#	def sumMoreThen(self, x):
-#		""" Возвращает сумму значений больше X """
-#		r=cc.sumMoreThen([v if not m else None for v,m in zip(self.data, self.data.mask)],x,precision=self.precision)
-#		return r
-
-
+	"""
 	@saveRes
-	def sumLessThen(self, x):
+	def sumMoreThen(self, x):
 		""" Возвращает сумму значений больше X """
-		r=cc.sumLessThen([v if not m else None for v,m in zip(self.data, self.data.mask)],x,precision=self.precision)
+		r=cc.sumMoreThen([v if not m else None for v,m in zip(self.data, self.data.mask)],x,precision=self.precision)
 		return r
 
 
-	@saveRes
-	def s_sumMoreThen(self, x, seasToCalc=False):
-		""" Возвращает кортеж значений больше Х для каждого сезона """
-		res=dict()
-		if seasToCalc==False: seasToCalc=[sn for sn in self.parent.seasonsCache]
-		dat=self.parent.getSeasonsData(seasToCalc)
-		yInd=self.parent.timeInds[self.year]
-		for sname in dat:
-			if dat[sname][yInd].mask.any():
-				res[sname]=None
+	def sumInPeriod(self,start,end):
+		"""
+		Функция возвращает сумму осадков за период между start и end
+		"""
+		from datetime import datetime,timedelta
+		from calendar import monthrange
+		#thisMonthLen=monthrange(start)[1]
+		y=self.year
+		periodLen=(end-start).days
+		psum=0
+		d=0
+		while d<periodLen:
+			today=start+timedelta(days=d)
+			thisMonthLen=monthrange(today.year, today.month)[1]
+			pl=thisMonthLen-today.day+1
+			if today.year==y:
+				psum+=self[today.month]/float(thisMonthLen)*pl
+			elif today.year==y+1:
+				psum+=self[12+today.month]/float(thisMonthLen)*pl
 			else:
-				res[sname]=cc.sumMoreThen(dat[sname][yInd],x, precision=self.precision)
-		return res
+				psum=None
+				break
+			d+=pl
+		if psum is not None: psum=round(psum,self.precision)
+		return psum
 
 
 if __name__ == "__main__":
 	acd=cliData.load('test')
 	for y in acd:
-		print y.summerLength()
+		print y.sumMoreThen(0,c='LT')
 	res=acd.anomal(1961,1990)
 	#raise noDataException(1960,1990)
 	#print acd.trend()
