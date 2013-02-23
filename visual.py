@@ -25,6 +25,7 @@ def getRedBlueCM(segments=100,reverse=False):
 def interannualVariability(vals,time,trend=[None,None],fn=None,smoothing=None, xLim=[None,None], yLim=[None,None]):
 	"""
 	Строит график изменения величины со временем. Одна линия + тренд + скользящее среднее
+	Если vals, time двумерные массивы, то на одном рисунке будут проведены разные линии
 	Параметры:
 		vals,time - 1d массивы значений и времени, пропуски должны быть в виде None
 		trend=[None,None] - границы линии тренда None - тренд не строится, -1 автоматически задаётся
@@ -43,28 +44,39 @@ def interannualVariability(vals,time,trend=[None,None],fn=None,smoothing=None, x
 	ax=fig.add_subplot(111)
 	ax.grid(True)
 	# set value
-	yMin,yMax=xLim[0] if xLim[0] else min(time), xLim[1] if xLim[1] else max(time)
-	ax.plot(time, vals, '-', color='#5ab3f8', linewidth=1.5)
-	if smoothing is not None:
-		av,at=movingAvg(vals,time, smoothing)
-		ax.plot(at, av, '-', color='#fb2e2e', linewidth=2.5)
-
-	if trend[0]==-1: trend[0]=min(time)
-	if trend[1]==-1: trend[1]=max(time)
-	ind1=time.index(trend[0])
-	ind2=time.index(trend[1])
-	valsT = vals[ind1:ind2+1]
-	timeT = time[ind1:ind2+1]
-	if None in vals:
-		valsT,timeT=removeNone(valsT,timeT)
-	if len(valsT)>10:
-		sl2, inter2, r_value2, p_value2, std_err2 = stats.linregress(timeT, valsT)
-		stat=dict({'slope':sl2, 'intercept':inter2, 'r':r_value2, 'p':p_value2, 'std':std_err2,
-		           'yMin':min(timeT), 'yMax':max(timeT)})
-		if not None in trend:
-			ax.plot([yMin, yMax], [inter2+sl2*yMin, sl2*max(time)+inter2], '--', color='black', linewidth=2)
-	else:
-		print 'Not enough data to estimate trend'
+	try:
+		[len(v) for v in vals]
+	except TypeError:
+		vals=[vals]
+	try:
+		[len(v) for v in time]
+		yMin,yMax=xLim[0] if xLim[0] else min([min(v) for v in time]), xLim[1] if xLim[1] else max([max(v) for v in time])
+	except TypeError:
+		yMin,yMax=xLim[0] if xLim[0] else min(time), xLim[1] if xLim[1] else max(time)
+		time=[time]
+	allStat=[]
+	for thisTime,thisVals in zip(time,vals):
+		ax.plot(thisTime, thisVals, '-', color='#5ab3f8', linewidth=1.5)
+		if smoothing is not None:
+			av,at=movingAvg(thisVals,thisTime, smoothing)
+			ax.plot(at, av, '-', color='#fb2e2e', linewidth=2.5)
+		if trend[0]==-1: trend[0]=min(thisTime)
+		if trend[1]==-1: trend[1]=max(thisTime)
+		ind1=thisTime.index(trend[0])
+		ind2=thisTime.index(trend[1])
+		valsT = thisVals[ind1:ind2+1]
+		timeT = thisTime[ind1:ind2+1]
+		if None in thisVals:
+			valsT,timeT=removeNone(valsT,timeT)
+		if len(valsT)>10:
+			sl2, inter2, r_value2, p_value2, std_err2 = stats.linregress(timeT, valsT)
+			stat=dict({'slope':sl2, 'intercept':inter2, 'r':r_value2, 'p':p_value2, 'std':std_err2,
+			           'yMin':min(timeT), 'yMax':max(timeT)})
+			if not None in trend:
+				ax.plot([yMin, yMax], [inter2+sl2*yMin, sl2*max(thisTime)+inter2], '--', color='black', linewidth=2)
+		else:
+			print 'Not enough data to estimate trend'
+		allStat.append(stat)
 	# set axis limits
 	x1,x2,y1,y2 = ax.axis()
 	ax.axis((xLim[0] if xLim[0] else x1, xLim[1] if xLim[1] else x2,
@@ -83,4 +95,4 @@ def interannualVariability(vals,time,trend=[None,None],fn=None,smoothing=None, x
 	else:
 		plt.show()
 	plt.close(fig)
-	return stat
+	return allStat
