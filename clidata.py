@@ -137,7 +137,7 @@ class cliData:
 			self.data=np.ma.masked_values([strdat[1] for strdat in d], fillValue)
 			#self.noGaps=False
 		except TypeError:
-			print 'It look like there is no gaps in your data. Are you sure??'
+#			print 'It look like there is no gaps in your data. Are you sure??'
 			self.data=np.ma.masked_values([strdat[1] for strdat in d], -999.99)
 			#raise
 			# если нет пропусков
@@ -892,19 +892,22 @@ class temp_yearData(yearData):
 		for i in range(len(dat)-1):
 			d1,v1=dat[i]
 			d2,v2=dat[i+1]
-			if v1==x: start=True
-			if not start: continue
+			if v1==x and ce(v2):
+				if d1.year==y:
+					start=True
+				else:
+					break
+			if not start:continue
 			t=(d2-d1).days
 			if (ce(v1) and ct(v2)):
-				# начало иди продолжение
+				# начало или продолжение
 				psum+=(t*abs(v2-v1))/2. + t*abs(min([v2,v1]))
 				tsum+=t
-			elif (ct(v1) and ce(v2)):
+			elif (ct(v1) and v2==x):
 				#если промежуток от этотой точки до следующей попадает под условие
-				if (v2==x and d1.year>y):
-					break # если период заканчивается в следующем году
 				psum+=(t*abs(v2-v1))/2. + t*abs(min([v2,v1]))
 				tsum+=t
+				if (v2==x and d2.year>y):break # если период заканчивается в следующем году
 			elif v1<x<v2 or v1>x>v2:
 				# если пропущена точка перехода
 				psum,tsum=None,None
