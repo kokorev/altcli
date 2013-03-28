@@ -2,7 +2,7 @@
 """
 Общие функции геометрии и картографии
 """
-from voronoi import *
+#from voronoi import *
 
 def cLon(lon):
 	""" Convert longitude to 181+ format """
@@ -156,3 +156,55 @@ def voronoi(cdl,maskPoly,showMap=False):
 			fill(x,y, alpha=0.6)
 		show()
 	return result
+
+
+class distanceMatrix(object):
+	"""
+	Класс для оптимизации нахождения X ближайших станций к заданой из заданного списка
+	"""
+	def __init__(self, meta1, meta2):
+		import numpy as np
+		def metaConverter(m):
+			if type(m) is list:
+				if type(m[0]) is dict:
+					indList=[el['ind'] for el in m]
+					metaDat={el['ind']:[el['lat'], el['lon']] for el in m}
+				elif type(m[0]) is list:
+					indList=[el[0] for el in m]
+					metaDat={el[0]:[el[1], el[2]] for el in m}
+				else:
+					raise ValueError, "Wrong meta format"
+			else:
+				raise ValueError, "Wrong meta format"
+			return metaDat,indList
+		md1, indl1 = metaConverter(meta1)
+		indl1.sort()
+		md2, indl2 = metaConverter(meta2)
+		indl2.sort()
+		if indl1==indl2: halfMatrix=True
+		matrix=np.zeros([len(indl1), len(indl2)])
+		for i1 in range(len(indl1)):
+			for i2 in range(len(indl2)):
+				if halfMatrix and i2<i1:
+					matrix[i1,i2]=matrix[i2,i1]
+				else:
+					ind1,ind2=indl1[i1], indl2[i2]
+					d=calcDist(md1[ind1][0],md1[ind1][1],md2[ind2][0],md2[ind2][1])
+					matrix[i1,i2]=d
+		self.distMatrix = matrix
+		self.indl1, self.md1 = indl1, md1
+		self.indl2, self.md2 = indl2, md2
+
+
+	def closest(self, ind, x=1):
+		"""
+
+		"""
+		if ind in self.indl1:
+			arr=[[i,v] for i,v in zip(self.indl1, self.distMatrix[ind,:])]
+		elif ind in self.indl2:
+			arr=[[i,v] for i,v in zip(self.indl1, self.distMatrix[ind,:])]
+		else:
+			raise KeyError, "index not in list"
+		arr.sort(key=lambda k: k[1])
+		return arr[:x]
