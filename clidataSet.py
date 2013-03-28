@@ -175,6 +175,18 @@ class metaData:
 		return res
 
 
+	def map(self, f):
+		"""
+		Вычисляет значение функции для кажой станции используя паралельные процессы
+		"""
+		import multiprocessing
+		pool = multiprocessing.Pool()
+		lst=[st for st in self]
+		res=pool.map(f, lst)
+		return res
+
+
+
 	def addSt(self, stListToAdd):
 		""" добавляет станции в self.stInds если их ещё там нет """
 		for st in stListToAdd:
@@ -233,7 +245,7 @@ class metaData:
 				pnt=Point(lon,lat)
 				if poly.contains(pnt): res_tmp.append(ind)
 			res=res+res_tmp
-		return res
+		return list(set(res))
 
 	#TODO: функция нахождения станция прилежащих к полигону
 
