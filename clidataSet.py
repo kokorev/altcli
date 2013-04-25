@@ -113,11 +113,11 @@ class metaData:
 		if not os.path.isabs(fn): fn = os.path.abspath(fn)
 		pth, filename = os.path.split(fn)
 		f = open(fn, 'w')
-		stl = ','.join([str(st.meta['ind']) for st in self.clidatObjects.values()])
+		stl = ','.join([str(st.meta['ind']) for st in self])
 		txt = "# %s \n%s \n%s \n" % ("набор данных без описания", str(self.meta), stl)
 		f.write(txt)
 		f.close()
-		for st in self.clidatObjects.values():
+		for st in self:
 			try:
 				scrfn = pth + '\\' + str(st.meta['ind'])
 				st.save(scrfn, replace)
