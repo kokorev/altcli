@@ -8,6 +8,7 @@
 __author__ = 'Vasily Kokorev'
 __email__ = 'vasilykokorev@gmail.com'
 
+from clidata import cliData
 
 class cmip5connection():
 	"""
@@ -46,7 +47,7 @@ class cmip5connection():
 		self.startYear = int(self.startDate.year)
 		self.startMonth = int(self.startDate.month)
 		self.warningShown = False
-		self.cliSetMeta = {'modelId':self.f.model_id, 'calendar':self.f.variables['time'].calendar}
+		self.cliSetMeta = {'modelId':self.f.model_id, 'calendar':self.f.variables['time'].calendar, 'source':'CMIP5 nc file'}
 
 
 	def getPoint(self, item):
@@ -55,7 +56,6 @@ class cmip5connection():
 		После долго путанцы было решено, что ф-я может принимать либо номер яцейки либо индексы координат,
 		но не сами координаты
 		"""
-		from clidata import cliData
 		try:
 			try:
 				latInd, lonInd = item
@@ -130,3 +130,49 @@ class cmip5connection():
 		latInd=int(ind/self.lon.size)
 		lonInd=ind - latInd*self.lon.size
 		return latInd, lonInd
+
+
+
+class cliGisConnection():
+	"""
+	Реализует чтение формата данных использовашегося в cliGis
+	"""
+	def __init__(self, dataFn, metaFn, fillValue=-999., dt=None):
+		import os.path
+		self.cliSetMeta={'source':'cliGis'}
+		self.fillValue=fillValue
+		if dt is None:
+			head, tail=os.path.split(dataFn)
+			dt=tail[0:1]
+			if dt not in ['T', 'P']: raise IOError, "Can't detect data type"
+		self.dt=dt
+		f=open(dataFn, 'r')
+		self.dat=[[float(v) if float(v)!=self.fillValue else None for v in l.split()] for l in f.readlines()]
+		f.close()
+		unicInds=list(set([v[0] for v in self.dat]))
+		f=open(metaFn, 'r')
+		m=[[float(v) for v in l.split()[:3]] for l in f.readlines()[1:]]
+		f.close()
+		self.meta=dict()
+		for ln in m:
+			ind=int(ln[0])
+			if ind not in unicInds: continue
+			self.meta[ind]={'ind':ind, 'lat':ln[1], 'lon':ln[2], 'dt':self.dt}
+
+
+	def getPoint(self, item):
+		""" return object for selected station """
+		if item not in self.meta: raise KeyError, "wrong data index"
+		gdat=[[ln[1],ln[2:]] for ln in self.dat if ln[0]==item]
+		gdat.sort(key=lambda a: a[0])
+		m=self.meta[item]
+		return cliData(gdat=gdat,meta=m)
+
+
+	def getAllMetaDict(self):
+		"""
+		Возвращает словарь метаданных для всех узлов сетки
+		"""
+		return self.meta
+
+
