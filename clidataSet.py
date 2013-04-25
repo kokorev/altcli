@@ -10,6 +10,7 @@ __author__ = 'Vasily Kokorev'
 __email__ = 'vasilykokorev@gmail.com'
 
 from clidata import *
+from common import timeit
 
 class tempData(cliData):
 	"""
@@ -44,7 +45,6 @@ class metaData:
 	большинство ф-й возвращают self.stInds который содержит список обектов metaSt
 	"""
 	def __init__(self, meta, cfgObj=None, stList=None, dataConnection=None):
-		#TODO: добавлять данные мета из dataConnection
 		self.__name__ = 'metaData'
 		self.dataConnection=dataConnection
 		self.clidatObjects=dict() if stList is None else {st.meta['ind']:st for st in stList}
@@ -113,11 +113,11 @@ class metaData:
 		if not os.path.isabs(fn): fn = os.path.abspath(fn)
 		pth, filename = os.path.split(fn)
 		f = open(fn, 'w')
-		stl = ','.join([str(st.meta['ind']) for st in self.clidatObjects.values()])
+		stl = ','.join([str(st.meta['ind']) for st in self])
 		txt = "# %s \n%s \n%s \n" % ("набор данных без описания", str(self.meta), stl)
 		f.write(txt)
 		f.close()
-		for st in self.clidatObjects.values():
+		for st in self:
 			try:
 				scrfn = pth + '\\' + str(st.meta['ind'])
 				st.save(scrfn, replace)
@@ -170,21 +170,9 @@ class metaData:
 		if self.thisInd >= len(self.stInds): raise StopIteration
 		ret = self.stInds[self.thisInd]
 		self.thisInd += 1
-		if len(self.clidatObjects)==0: raise ValueError, "unable to iterate - self.clidatObjects is empty"
-		res=self.clidatObjects[ret]
+		if self.dataConnection is None and len(self.clidatObjects)==0: raise ValueError, "unable to iterate - self.clidatObjects is empty"
+		res=self[ret]
 		return res
-
-
-	def map(self, f):
-		"""
-		Вычисляет значение функции для кажой станции используя паралельные процессы
-		"""
-		import multiprocessing
-		pool = multiprocessing.Pool()
-		lst=[st for st in self]
-		res=pool.map(f, lst)
-		return res
-
 
 
 	def addSt(self, stListToAdd):
@@ -297,12 +285,13 @@ class metaData:
 		z = [s[dt].res[valn] for s in self if s[dt].res[valn] != None]
 		return Rbf(x, y, z, function=method)
 
-
 if __name__ == "__main__":
+	import numpy as np
 	from dataConnections import cmip5connection
 	conn=cmip5connection(r'D:\data\CMIP5\pr\historical\HadGEM-ES_pr_historical.nc')
 	cda=metaData({'dt':conn.dt}, dataConnection=conn)
 	pass
+
 	#st=cda[22641]
 	#print st.data.mask
 	#res=cda.setRegAvgData(yMin=1961,yMax=2012)
