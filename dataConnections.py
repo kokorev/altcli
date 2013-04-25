@@ -40,9 +40,12 @@ class cmip5connection():
 			self.startDate=nc.num2date(self.f.variables['time'][0], self.f.variables['time'].units,
 									   self.f.variables['time'].calendar)
 		except ValueError:
-			print 'Warning! failed to parse date string -%s. Model id - %s. startDate '\
+			if self.f.variables['time'].units=='days since 1-01-01 00:00:00':
+				self.startDate=datetime(1,1,1)
+			else:
+				print 'Warning! failed to parse date string -%s. Model id - %s. startDate '\
 				  'set to 0850-1-1 assuming model is MPI'%(self.f.variables['time'].units,self.f.model_id)
-			self.startDate=datetime(850,1,1)
+				self.startDate=datetime(850,1,1)
 		self.startYear = int(self.startDate.year)
 		self.startMonth = int(self.startDate.month)
 		self.warningShown = False
