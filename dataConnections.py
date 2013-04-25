@@ -163,7 +163,7 @@ class cliGisConnection():
 	def getPoint(self, item):
 		""" return object for selected station """
 		if item not in self.meta: raise KeyError, "wrong data index"
-		gdat=[[ln[1],ln[2:]] for ln in self.dat if ln[0]==item]
+		gdat=[[int(ln[1]),ln[2:]] for ln in self.dat if ln[0]==item]
 		gdat.sort(key=lambda a: a[0])
 		m=self.meta[item]
 		return cliData(gdat=gdat,meta=m)
