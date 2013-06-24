@@ -191,7 +191,7 @@ class metaData:
 		"""
 		res = ""
 		for s in self.stInds:
-			res += str(s.meta['ind']) + '\t'
+			res += str(self[s].meta['ind']) + '\t'
 		return res
 
 
