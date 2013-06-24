@@ -116,7 +116,7 @@ def voronoi(cdl,maskPoly,showMap=False):
 	box=list(maskPoly.bounds) #(minx, miny, maxx, maxy) [90, -180, -90, 180]
 	bbox=[max(lats) if max(lats)>box[3] else box[3],min(lons) if min(lons)<box[0] else box[0],
 	      min(lats) if min(lats)<box[1] else box[1],max(lons) if max(lons)>box[2] else box[2]]
-	vl=voronoi_poly.VoronoiPolygons(pl, PlotMap=False, BoundingBox=bbox)
+	vl=voronoi_poly.VoronoiPolygons(pl, PlotMap=False)#, BoundingBox=bbox
 	result=dict()
 	for ind, r in vl.items():
 		try:

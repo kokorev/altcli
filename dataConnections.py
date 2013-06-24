@@ -9,12 +9,13 @@ __author__ = 'Vasily Kokorev'
 __email__ = 'vasilykokorev@gmail.com'
 
 from clidata import cliData
+from clidataSet import createCliDat
 
 class cmip5connection():
 	"""
 	Реализует чтение .nc файлов с данными cmip5 месячного разрешения
 	"""
-	def __init__(self, fn):
+	def __init__(self, fn, convert=True):
 		import netCDF4 as nc
 		from datetime import datetime
 		from geocalc import cLon
@@ -23,15 +24,15 @@ class cmip5connection():
 			print 'projet_id is "%s" not "CMIP5"'%self.f.project_id
 		# определяем основную переменную в массиве, это так которая зависит от трёх других
 		self.dt=[v for v in self.f.variables if self.f.variables[v].ndim==3][0]
-		if self.dt=='tas':
+		if self.dt=='tas' and convert is True:
 			from tempConvert import kelvin2celsius
 			self.convertValue=lambda val,year,month: kelvin2celsius(val)
-		elif self.dt=='pr':
+		elif self.dt=='pr' and convert is True:
 			from precConvert import si2mmPerMonth
 			self.convertValue=si2mmPerMonth
 		else:
 			self.convertValue=lambda val,year,month: val
-			print "Warning! There is no converter for data type = '%s'"%self.dt
+#			print "Warning! There is no converter for data type = '%s'"%self.dt
 		self.var=self.f.variables[self.dt]
 		self.lat=self.f.variables['lat']
 		self.latvals=[self.lat[l] for l in range(self.lat.size)]
@@ -90,7 +91,7 @@ class cmip5connection():
 			for yn,i in enumerate(range(0,len(vals),12)):
 				tyear=self.startYear+yn
 				gdat.append([tyear, [self.convertValue(v, year=tyear, month=mn+1) for mn,v in enumerate(vals[i:i+12])]])
-		return cliData(meta=meta, gdat=gdat)
+		return createCliDat(meta=meta, gdat=gdat)
 
 
 	def getAllMetaDict(self):
@@ -169,7 +170,7 @@ class cliGisConnection():
 		gdat=[[int(ln[1]),ln[2:]] for ln in self.dat if ln[0]==item]
 		gdat.sort(key=lambda a: a[0])
 		m=self.meta[item]
-		return cliData(gdat=gdat,meta=m)
+		return createCliDat(gdat=gdat,meta=m)
 
 
 	def getAllMetaDict(self):
