@@ -162,7 +162,7 @@ class distanceMatrix(object):
 	"""
 	Класс для оптимизации нахождения X ближайших станций к заданой из заданного списка
 	"""
-	def __init__(self, meta1, meta2):
+	def __init__(self, meta1, meta2=None):
 		import numpy as np
 		def metaConverter(m):
 			if type(m) is list:
@@ -179,9 +179,13 @@ class distanceMatrix(object):
 			return metaDat,indList
 		md1, indl1 = metaConverter(meta1)
 		indl1.sort()
-		md2, indl2 = metaConverter(meta2)
-		indl2.sort()
-		if indl1==indl2: halfMatrix=True
+		if meta2 is None:
+			meta2,md2,ind2 = meta1, md1, indl1
+			halfMatrix=True
+		else:
+			md2, indl2 = metaConverter(meta2)
+			indl2.sort()
+			if indl1==indl2: halfMatrix=True
 		matrix=np.zeros([len(indl1), len(indl2)])
 		for i1 in range(len(indl1)):
 			for i2 in range(len(indl2)):
