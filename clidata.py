@@ -294,9 +294,6 @@ class cliData:
 		"""
 		if self.yList != other.yList:
 			r=False
-#		print self.data
-#		print other.data
-#		print self.data!=other.data
 		if (self.data!=other.data).any():
 			r=False
 		else:
@@ -528,11 +525,10 @@ class cliData:
 		from math import isnan
 		if precision is None: precision=self.precision+2
 		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
-		res=self.getParamSeries(functName, params, yMin, yMax, converter)
-		time=self.yList[i1:i2+1]
+		res,time=self.getParamSeries(functName, params, yMin, yMax, converter)
 		slope, intercept, r_value, p_value, std_err = stats.linregress(time, res)
 		if isnan(slope): slope = None
-		return round(slope, precision), round(intercept,precision), res.round(self.precision), time
+		return round(slope, precision), round(intercept,precision), [round(v, self.precision) for v in res], time
 
 
 	@cache
@@ -695,7 +691,8 @@ class yearData:
 					retval = None
 			else:
 				retval = None
-		return round(retval,self.precision) if retval!=self.data.fill_value else None
+		#todo: определиться с использованием или не использованием масок
+		return round(retval,self.precision) if retval!=self.data.fill_value and retval!=None else None
 
 
 	def getSeasonsData(self,seasons):
@@ -704,7 +701,7 @@ class yearData:
 		{'название сезона': [данные по месяцам в хронологическом порядке]}
 		"""
 		res=dict()
-		for sname,mlist in seasons.item():
+		for sname,mlist in seasons.items():
 			mlist.sort()
 			res[sname]=[self[m] for m in mlist]
 		return res
