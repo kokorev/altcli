@@ -437,7 +437,8 @@ class cliData:
 		"""
 		yMin, yMax,i1,i2 = self.setPeriod(yMin, yMax)
 		res,time=[],[]
-		for yobj in self[yMin:yMax]:
+		for y in range(yMin,yMax+1):
+			yobj=self[y]
 			f = getattr(yobj, functName)
 			try:
 				r=f(*params)
