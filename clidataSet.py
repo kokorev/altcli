@@ -12,6 +12,7 @@ __email__ = 'vasilykokorev@gmail.com'
 from clidata import *
 from common import timeit
 
+
 class tempData(cliData):
 	"""
 	Класс релизующий функции расчёта показателей спечифичных для температуры воздуха
@@ -284,6 +285,49 @@ class metaData:
 		y = [s.meta['lat'] for s in self if s[dt].res[valn] != None]
 		z = [s[dt].res[valn] for s in self if s[dt].res[valn] != None]
 		return Rbf(x, y, z, function=method)
+
+	def correlationMatrix(self,yMin=-1,yMax=-1,season=None,function='s_avg'):
+		"""
+		Матрица корреляций для станций из набора
+		"""
+		from scipy import stats
+		series=dict()
+		inds=[st.meta['ind'] for st in self]
+		if season is None: season={'y':range(1,13)}
+		snames=season.keys()
+		assert len(snames)==1, "this function work with one season at the time"
+		sname=snames[0]
+		for st in self:
+			r=st.getParamSeries(function,[season],yMin=yMin,yMax=yMax, converter=lambda a:a[sname])
+			series[st.meta['ind']]=r
+#		corMatrix=np.corrcoef(series)
+		corMatrix={ind:dict() for ind in series}
+		cmList=list()
+		cRegMeanCorr=list()
+		for ind1 in series:
+			cmListRow=list()
+			for ind2 in series:
+				if ind1!=ind2:
+					try:
+						c=corMatrix[ind2][ind1]
+					except KeyError:
+						tYmin=max([min(series[ind1][1]),min(series[ind2][1])])
+						tYmax=min([max(series[ind1][1]),max(series[ind2][1])])
+						d1=series[ind1][0][series[ind1][1].index(tYmin) : series[ind1][1].index(tYmax)]
+						d2=series[ind2][0][series[ind2][1].index(tYmin) : series[ind2][1].index(tYmax)]
+						d=[[v1,v2] for v1,v2 in zip(d1,d2) if v1 is not None and v2 is not None]
+						c=stats.pearsonr([v[0] for v in d],[v[1] for v in d])[0]
+						c=round(c,3)
+						cRegMeanCorr.append(c)
+				else:
+					c=1
+				corMatrix[ind1][ind2]=c
+				cmListRow.append(c)
+			cmList.append(cmListRow)
+		return corMatrix, [inds,cmList], cc.avg(cRegMeanCorr,3)
+
+
+
 
 if __name__ == "__main__":
 	import numpy as np
