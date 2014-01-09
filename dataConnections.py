@@ -51,7 +51,8 @@ class cmip5connection():
 		self.startYear = int(self.startDate.year)
 		self.startMonth = int(self.startDate.month)
 		self.warningShown = False
-		self.cliSetMeta = {'modelId':self.f.model_id, 'calendar':self.f.variables['time'].calendar, 'source':'CMIP5 nc file'}
+		self.cliSetMeta = {'modelId':self.f.model_id, 'calendar':self.f.variables['time'].calendar, 'source':'CMIP5 nc file',
+						   'scenario':self.f.scenario}
 
 
 	def getPoint(self, item):
