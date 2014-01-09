@@ -72,7 +72,7 @@ def interannualVariability(vals,time,trend=[None,None],fn=None,smoothing=None, x
 		if len(valsT)>10:
 			sl2, inter2, r_value2, p_value2, std_err2 = stats.linregress(timeT, valsT)
 			stat=dict({'slope':sl2, 'intercept':inter2, 'r':r_value2, 'p':p_value2, 'std':std_err2,
-			           'yMin':min(timeT), 'yMax':max(timeT)})
+					   'yMin':min(timeT), 'yMax':max(timeT)})
 			if not None in trendChecked:
 				ax.plot([yMin, yMax], [inter2+sl2*yMin, sl2*max(thisTime)+inter2], '--', color='black', linewidth=2)
 		else:
@@ -81,7 +81,7 @@ def interannualVariability(vals,time,trend=[None,None],fn=None,smoothing=None, x
 	# set axis limits
 	x1,x2,y1,y2 = ax.axis()
 	ax.axis((xLim[0] if xLim[0] else x1, xLim[1] if xLim[1] else x2,
-	         yLim[0] if yLim[0] else y1, yLim[1] if yLim[1] else y2))
+			 yLim[0] if yLim[0] else y1, yLim[1] if yLim[1] else y2))
 	#setfontsize and label positions
 	fontsize=30
 	for tick in ax.xaxis.get_major_ticks():
@@ -97,3 +97,38 @@ def interannualVariability(vals,time,trend=[None,None],fn=None,smoothing=None, x
 		plt.show()
 	plt.close(fig)
 	return allStat
+
+def trendsMatrix(cdo, fn=None, minTrlen=20):
+	"""
+	строит матрицу зависимости велечины тренда от года начала тренда и его длинны
+	принимает
+		объект
+		минимальная длинна тренда
+		сезон?
+	"""
+	import matplotlib
+	import matplotlib.pyplot as plt
+	cdict = {'blue': ((0.0, 1.0, 1.0),
+			 (0.5, 1.0, 1.0),
+			 (1.0, 0.0, 0.0)),
+		 'green': ((0.0, 0.0, 0.0),
+			   (0.5, 1.0, 1.0),
+			   (1.0, 0.0, 0.0)),
+		 'red': ((0.0, 0.0, 0.0),
+			  (0.5, 1.0, 1.0),
+			  (1.0, 1.0, 1.0))}
+	cm = matplotlib.colors.LinearSegmentedColormap('my_colormap', cdict, 100)
+	x, y, z = cdo.trendMatrix(minTrlen=minTrlen)
+	fig = plt.figure()
+	ax = fig.add_subplot(1, 1, 1)
+	ax.set_xlim(x[0][0], x[0][-1])
+	ax.set_ylim(y[0][0], y[-1][0])
+	ax.set_xlabel('trend lenth')
+	ax.set_ylabel('first year')
+	plt.pcolor(x, y, z, cmap=cm, vmin= -0.08, vmax=0.08) #
+	plt.colorbar()
+	if fn == None:
+		plt.show()
+	else:
+		plt.savefig(fn)
+		plt.close(fig)
