@@ -81,7 +81,7 @@ class modelSet():
 				res=self.regionsAvg[reg][modName].calcTask(task)
 				if modName not in self.results: print self.results
 				self.results[modName].update({reg:res})
-		return None
+		return self.results
 
 	def printModRegFunctValTable(self,fname):
 		"""
