@@ -93,7 +93,8 @@ class metaData:
 				cdo=cliData.load(source)
 				cliDataList.append(cdo)
 			except IOError:
-				raise IOError, 'fail to load %s'%source
+				pass
+				#raise IOError, 'fail to load %s'%source
 		cfg = config()
 		cfg.get = None # Зануляем ф-ю загрузки новых данных
 		cfg.getMeta = None # И ф-ю загрузки методанных
@@ -186,6 +187,7 @@ class metaData:
 				self.stMeta[int(ind)]=st.meta
 		return self.stInds
 
+
 	def __str__(self):
 		"""
 		ф-я обработки объекта этого класса ф-й str()? возвращает список станций через табуляцию
@@ -194,6 +196,17 @@ class metaData:
 		for s in self.stInds:
 			res += str(self[s].meta['ind']) + '\t'
 		return res
+
+
+	def calcTask(self, task):
+		"""
+		Просчитывает задание для каждой станции набора
+		"""
+		result=dict()
+		for st in self:
+			r=st.calcTask(task)
+			result[st.meta['ind']]=r
+		return result
 
 
 	def findXnearest(self, x, lat, lon, yMin=0, yMax=0):
