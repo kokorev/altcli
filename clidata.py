@@ -576,10 +576,11 @@ class cliData:
 		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
 		res=dict()
 		for sname in sdat:
-			norm=self.s_norm(normMinY, normMaxY, seasToCalc=sname)
-			dat=[round(d.mean(), self.precision) if not d.any() else None for d in sdat[sname][i1:i2+1]]
-			res[sname]=[[round(dat[i]-norm, self.precision) for i in range(i1,i2+1)]]
-		return res
+			norm=self.s_norm(normMinY, normMaxY, seasToCalc=sname)[sname]
+			dat=sdat[sname][i1:i2+1]
+			res[sname]=[round(v.mean()-norm , self.precision) if v is not None else None for v in dat]
+		time=self.yList[i1:i2+1]
+		return res,time
 
 
 	@cache

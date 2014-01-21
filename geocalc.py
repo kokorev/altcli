@@ -94,6 +94,32 @@ def shpFile2shpobj(fn):
 	return res
 
 
+def setStInShape(meta,shpfile):
+	"""
+	Функция возвращает список станций попадающий в полигон(ы) из шэйпфайла файла
+	"""
+	import shapefile as shp
+	from shapely.geometry import Polygon,Point
+	res=[]
+	sf = shp.Reader(shpfile)
+	for sp in sf.shapes():
+		res_tmp=[]
+		lonmin,latmin,lonmax,latmax=sp.bbox
+		lonmin,lonmax=cLon(lonmin),cLon(lonmax)
+		if lonmin<0 or lonmax<0:
+			polygonPoints=[[cLon(cors[0]),cors[1]] for cors in sp.points]
+		else:
+			polygonPoints=sp.points
+		poly=Polygon(polygonPoints)
+		indsInBox=[ind for ind in meta if lonmin<=cLon(meta[ind]['lon'])<=lonmax and latmin<=meta[ind]['lat']<=latmax]
+		for ind in indsInBox:
+			lat,lon=meta[ind]['lat'], cLon(meta[ind]['lon'])
+			pnt=Point(lon,lat)
+			if poly.contains(pnt): res_tmp.append(ind)
+		res=res+res_tmp
+	return list(set(res))
+
+
 def voronoi(cdl,maskPoly,showMap=False):
 	"""
 	Расчитывает полигоны тиссена для каждой станции из cdl ограниченые контуром полигона
@@ -110,9 +136,9 @@ def voronoi(cdl,maskPoly,showMap=False):
 	elif isinstance(cdl, metaData):
 		pl={ind:(meta['lon'], meta['lat']) for ind,meta in cdl.stMeta.items()}
 	else:
-		raise ValueError, "First argument should be {ind:(lat, lon)} dict or metaData instance"
-	lats=[meta['lat'] for ind,meta in cdl.stMeta.items()]
-	lons=[meta['lon'] for ind,meta in cdl.stMeta.items()]
+		raise ValueError, "First argument should be {ind:(lon, lat)} dict or metaData instance"
+	lats=[meta[0] for ind,meta in pl.items()]
+	lons=[meta[1] for ind,meta in pl.items()]
 	box=list(maskPoly.bounds) #(minx, miny, maxx, maxy) [90, -180, -90, 180]
 	bbox=[max(lats) if max(lats)>box[3] else box[3],min(lons) if min(lons)<box[0] else box[0],
 	      min(lats) if min(lats)<box[1] else box[1],max(lons) if max(lons)>box[2] else box[2]]
