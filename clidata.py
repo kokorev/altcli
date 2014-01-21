@@ -526,7 +526,9 @@ class cliData:
 		from math import isnan
 		if precision is None: precision=self.precision+2
 		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		#converter=None
 		res,time=self.getParamSeries(functName, params, yMin, yMax, converter)
+		res,time=cc.removeNone(res,time)
 		slope, intercept, r_value, p_value, std_err = stats.linregress(time, res)
 		if isnan(slope): slope = None
 		return round(slope, precision), round(intercept,precision), [round(v, self.precision) for v in res], time
@@ -610,17 +612,51 @@ class cliData:
 		for fnInd, tsk in task.items():
 			if fnInd in priorTasks: continue
 			funct = getattr(self, tsk['fn'])
-			fr = funct(*tsk['param'])
 			try:
-				fr=tsk['converter'](fr)
-			except KeyError:
-				pass # конвертр не задан, это нормально
-			except TypeError:
-				raise TypeError, "конвертр результата расчёта не является функцией"
-			finally:
-				res[fnInd]=fr
+				fr = funct(*tsk['param'])
+				try:
+					fr=tsk['converter'](fr)
+				except KeyError:
+					pass # конвертр не задан, это нормально
+				except TypeError:
+					raise TypeError, "конвертр результата расчёта не является функцией"
+				finally:
+					res[fnInd]=fr
+			except:
+				print '%s has failed for st %s'%(fnInd, str(self.meta))
+				res[fnInd]=None
 		self.res.update(res)
 		return res
+
+	@cache
+	def trendMatrix(self, minTrlen=20):
+		"""
+		Расчитывает матрицу зависимости велечины тренда от года начала тренда и его длинны
+		Возвращает три двумерные numPy массива x,y,z
+		"""
+		import numpy as np
+		y = range(self.yMin, self.yMax + 1)
+		y_minLim = self.yMin
+		y_maxLim = self.yMax - minTrlen
+		x_minLim = minTrlen
+		x_maxLim = self.yMax - self.yMin
+		y.reverse()
+		ty = []
+		for yStart in range(y_minLim, y_maxLim + 1): # для каждого года начала
+			tx = []
+			for trLen in range(x_minLim, x_maxLim + 1) : # для каждой проболжительности тренда
+				if (yStart + trLen) <= self.yMax:
+					slope, intercept, r_value, p_value,  = self.trend(yStart, (yStart + trLen))
+				else:
+					slope = 0
+				yi = yStart - y_minLim
+				xi = trLen - x_minLim
+				tx.append(slope)
+			ty.append(tx)
+		x = np.array([[tl for tl in range(x_minLim, x_maxLim + 1)] for tyear in range(self.yMin, (self.yMax - minTrlen) + 1)])
+		y = np.array([[tyear for tl in range(x_minLim, x_maxLim + 1)] for tyear in range(self.yMin, (self.yMax - minTrlen) + 1)])
+		z = np.array(ty)
+		return x, y, z
 
 
 
@@ -833,7 +869,7 @@ class temp_yearData(yearData):
 	"""
 	def crossingPoints(self, x):
 		"""
-		Расчитывает даты перехода через ноль
+		Расчитывает даты перехода через заданное значение линейной интерполяцией
 		"""
 		from datetime import datetime,timedelta
 		points=[]
@@ -857,11 +893,16 @@ class temp_yearData(yearData):
 		return points
 
 
+	def ddt_simple(self):
+		return cc.sumMoreThen(self.data,0,2)*30.5
+
+
 	@saveRes
 	def conditionalSum(self,x, c='GT'):
 		"""
 		Уточнённый алгоритм расчёта градусо дней
 		"""
+		#todo: уточнить логику работы в случаях когда точки перехода встречаются не каждый год
 		from datetime import datetime as dt
 		if c=='GT':
 			ct=lambda v: v>x
