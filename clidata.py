@@ -411,10 +411,11 @@ class cliData:
 			if i<iStart or i>=iStop:
 				sdat.append([self.filledValue for l,mn in seasIndList])
 			else:
-				if not np.ma.all(self.data):
-					sdat.append([(self.data[i+l,mn] if self.data.mask[i+l,mn]==False else self.filledValue) for l,mn in seasIndList])
+				if not np.ma.all(self.data.mask):
+					line=[(self.data[i+l,mn] if self.data.mask[i+l,mn]==False else self.filledValue) for l,mn in seasIndList]
 				else:
-					sdat.append([self.data[i+l,mn] for l,mn in seasIndList])
+					line=[self.data[i+l,mn] for l,mn in seasIndList]
+				sdat.append(line)
 		sdatMasked=np.ma.masked_values(sdat, self.filledValue)
 		return sdatMasked
 
