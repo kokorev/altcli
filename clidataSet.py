@@ -25,16 +25,16 @@ class tempData(cliData):
 		return res,time
 
 
-def createCliDat(meta, gdat=None, cfg=None):
+def createCliDat(meta, gdat=None, cfg=None, fillValue=None):
 	if cfg == None:
 		cfg = config()
 		cfg.get = None # Зануляем ф-ю загрузки новых данных
-		cfg.getMeta = None # И ф-ю загрузки методанных
+		cfg.getMeta = None # И ф-ю загрузки метаданных
 	dt = cfg.elSynom[meta['dt']]
 	if dt == 'temp':
-		dataObj = tempData(meta, gdat, cfg)
+		dataObj = tempData(meta, gdat, cfg, fillValue=fillValue)
 	else:
-		dataObj = cliData(meta, gdat, cfg)
+		dataObj = cliData(meta, gdat, cfg, fillValue=fillValue)
 	return dataObj
 
 
@@ -251,15 +251,14 @@ class metaData:
 
 	#TODO: функция нахождения станция прилежащих к полигону
 
-	def setRegAvgData(self, yMin=None, yMax=None, weight=None, greedy=False, mpr=0):
+	def setRegAvgData(self, yMin=None, yMax=None, weight=None, greedy=False):
 		"""
 		вычисляет осреднеённый ряд по региону, овзвращает объект класса stData
 		по умолчанию алгоритм составляет составляет ряд для периода за который наблюдения есть на всех осредняемых станциях
 		для использование осреднения с весами надо передать в необязательном элементе weight ф-ю которая принимает объект станции и возвращает её вес
 		принимает
 			yMin,yMax - int, необязательный - границы периода осреднения
-			weight - ф-я, функция вычисления веса станции.
-			mpr - максимальный процент пропуска (??)
+			weight - словарь весов станцийб если не задан то арифметическое осреднение
 		"""
 		yMinArr=[st.meta['yMin'] for st in self]
 		yMaxArr=[st.meta['yMax'] for st in self]
@@ -281,7 +280,7 @@ class metaData:
 			ws=[weight[ind] for ind in self.stInds] if weight is not None else None
 			if dat.mask.all():continue
 			r=np.ma.average(dat,axis=0, weights=ws)
-			gdat.append([year,list(r.data)])
+			gdat.append([year,list(r.filled(-999.99))])
 		numStUsed=sum([1 for i in weight if weight[i]!=0]) if weight is not None else len(self)
 		cdo=cliData({'dt':self.meta['dt'],'ind':0,'lat':0,'lon':0, 'stUsed':numStUsed}, gdat)
 		return cdo
