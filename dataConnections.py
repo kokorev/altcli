@@ -28,8 +28,12 @@ class cmip5connection():
 			from tempConvert import kelvin2celsius
 			self.convertValue=lambda val,year,month: kelvin2celsius(val)
 		elif self.dt=='pr' and convert is True:
-			from precConvert import si2mmPerMonth
-			self.convertValue=si2mmPerMonth
+			if self.f.frequency=='day':
+				from precConvert import si2mmPerDay
+				self.convertValue=si2mmPerDay
+			elif self.f.frequency=='mon':
+				from precConvert import si2mmPerMonth
+				self.convertValue=si2mmPerMonth
 		else:
 			self.convertValue=lambda val,year,month: val
 #			print "Warning! There is no converter for data type = '%s'"%self.dt
