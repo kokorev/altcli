@@ -140,6 +140,20 @@ class cmip5connection():
 		lonInd=ind - latInd*self.lon.size
 		return latInd, lonInd
 
+	def closestDot(self, lat, lon):
+		"""
+		считает индексы ячеек из координат
+		!Внимание! индексы ячеек разные для разных моделей(сеток) разные
+		"""
+		if lon<0: lon += 360
+		lonlist=[[i,abs(v-lon)] for i,v in enumerate(self.lonvals)]
+		lonlist.sort(key=lambda a: a[1])
+		lonInd=lonlist[0][0]
+		latlist=[[i,abs(v-lat)] for i,v in enumerate(self.latvals)]
+		latlist.sort(key=lambda a: a[1])
+		latInd=latlist[0][0]
+		return latInd, lonInd
+
 
 
 class cliGisConnection():
