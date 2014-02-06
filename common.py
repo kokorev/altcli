@@ -126,7 +126,7 @@ class config:
 		elLst = ini.get("elements", "elementsList").split(',')
 		synDict = dict()
 		for el in elLst:
-			synLst = ini.get("elements", el + "Synonyms").split(',')
+			synLst = ini.get("elements", el.strip() + "Synonyms").split(',')
 			for syn in synLst:
 				synDict.update({syn:el})
 		return synDict
