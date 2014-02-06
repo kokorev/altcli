@@ -16,5 +16,5 @@ def si2mmPerMonth(val,year=None,month=None):
 	r=val*86400*numD
 	return r
 
-def si2mmPerDay(val):
+def si2mmPerDay(val,year=None,month=None):
 	return val*86400
