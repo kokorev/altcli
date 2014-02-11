@@ -681,6 +681,8 @@ class yearData:
 		self.parent = parent
 		if year in parent.timeInds:
 			self.data=copy.deepcopy(parent.data[parent.timeInds[year]])
+			# todo: разобраться в каких случаях срабатывает условие ниже и почему. Попадалось при работе с данными tas historical EC-Earth
+			if type(self.data) is list: self.data=np.ma.masked_values(self.data, parent.filledValue)
 		else:
 			self.data=np.ma.masked_values([parent.filledValue]*12, parent.filledValue)
 		self.data.mask=np.ma.getmaskarray(self.data)
