@@ -102,6 +102,7 @@ class metaData:
 		acl.addSt(cliDataList)
 		return acl
 
+
 	def save(self, fn, replace=False, ignoreExisting=False):
 		"""
 		сохраняет набор данных.
@@ -160,8 +161,10 @@ class metaData:
 			raise KeyError, "Станции %i нет в списке"%ind
 		return True
 
+
 	def __len__(self):
 		return len(self.stInds)
+
 
 	def __iter__(self):
 		self.thisInd = self.minInd
@@ -298,6 +301,7 @@ class metaData:
 		z = [s[dt].res[valn] for s in self if s[dt].res[valn] != None]
 		return Rbf(x, y, z, function=method)
 
+
 	def correlationMatrix(self,yMin=-1,yMax=-1,season=None,function='s_avg'):
 		"""
 		Матрица корреляций для станций из набора
@@ -312,7 +316,7 @@ class metaData:
 		for st in self:
 			r=st.getParamSeries(function,[season],yMin=yMin,yMax=yMax, converter=lambda a:a[sname])
 			series[st.meta['ind']]=r
-#		corMatrix=np.corrcoef(series)
+		#corMatrix=np.corrcoef(series)
 		corMatrix={ind:dict() for ind in series}
 		cmList=list()
 		cRegMeanCorr=list()
@@ -337,8 +341,6 @@ class metaData:
 				cmListRow.append(c)
 			cmList.append(cmListRow)
 		return corMatrix, [inds,cmList], cc.avg(cRegMeanCorr,3)
-
-
 
 
 if __name__ == "__main__":
