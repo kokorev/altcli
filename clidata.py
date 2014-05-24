@@ -114,6 +114,7 @@ class cliData:
 		gdat=[[year, [val1, val2, ..., val12]], [...]]
 		cfg=config()
 		"""
+		#todo: принимать numpy array в качестве gdat
 		if cfg == None: cfg = config()
 		self.cfg = cfg
 		self.__name__ = 'cliData'
@@ -621,6 +622,18 @@ class cliData:
 		return res
 
 
+	def getAnomalCdo(self, norm_yMin, norm_yMax):
+		"""
+		Возвращает объект cliData в котором все значения данного объекта переведены в аномалии от заданного периода
+		@return: cliData object
+		"""
+		yMin,yMax,i1,i2 = self.setPeriod(norm_yMin, norm_yMax)
+		gdat=[[y,list(v.filled(-999.99))] for y,v in zip(self.yList,self.anomal(norm_yMin, norm_yMax))]
+		meta=dict(self.meta)
+		meta['comment']="converted to anomalys from norm %i - %i"%(yMin,yMax)
+		return cliData(meta,gdat)
+
+
 	def calcTask(self,task):
 		"""
 		Обсчитывает принятое задание
@@ -714,6 +727,7 @@ class yearData:
 
 	def __str__(self):
 		rList = list([round(v,self.precision)  if v!=self.parent.filledValue else None for v in self.data]) # копируем лист!
+		while len(rList)<12: rList.append(None)
 		rList.insert(0, self.year)
 		strList = [str(s) for s in rList]
 		resstr = "\t".join(strList)
