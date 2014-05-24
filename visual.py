@@ -56,10 +56,10 @@ def interannualVariability(vals,time,trend=[None,None],fn=None,smoothing=None, x
 		time=[time]
 	allStat=[]
 	for thisTime,thisVals in zip(time,vals):
-		ax.plot(thisTime, thisVals, '-', color='#5ab3f8', linewidth=1.5, label='test')
+		ax.plot(thisTime, thisVals, '-', color='#5ab3f8', linewidth=1.5, label='test', zorder=0)
 		if smoothing is not None:
 			av,at=movingAvg(thisVals,thisTime, smoothing)
-			ax.plot(at, av, '-', color='#fb2e2e', linewidth=2.5)
+			ax.plot(at, av, '-', color='#fb2e2e', linewidth=2.5, zorder=1)
 		if trend is not None:
 			trendChecked=[None,None]
 			trendChecked[0]=min([t for t,v in zip(thisTime,thisVals) if v is not None]) if trend[0] in [-1,None] else trend[0]
@@ -75,7 +75,7 @@ def interannualVariability(vals,time,trend=[None,None],fn=None,smoothing=None, x
 				stat=dict({'slope':sl2, 'intercept':inter2, 'r':r_value2, 'p':p_value2, 'std':std_err2,
 						   'yMin':trendChecked[0], 'yMax':trendChecked[1]})
 				if not None in trendChecked:
-					ax.plot([trendChecked[0], trendChecked[1]], [inter2+sl2*trendChecked[0], sl2*trendChecked[1]+inter2], '--', color='black', linewidth=2)
+					ax.plot([trendChecked[0], trendChecked[1]], [inter2+sl2*trendChecked[0], sl2*trendChecked[1]+inter2], '--', color='black', linewidth=2, zorder=2)
 			else:
 				print 'Not enough data to estimate trend'
 			allStat.append(stat)
