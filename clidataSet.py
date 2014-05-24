@@ -282,7 +282,9 @@ class metaData:
 			r=np.ma.average(dat,axis=0, weights=ws)
 			gdat.append([year,list(r.filled(-999.99))])
 		numStUsed=sum([1 for i in weight if weight[i]!=0]) if weight is not None else len(self)
-		cdo=cliData({'dt':self.meta['dt'],'ind':0,'lat':0,'lon':0, 'stUsed':numStUsed}, gdat)
+		meta=dict(self.meta)
+		meta.update({'ind':0,'lat':0,'lon':0, 'stUsed':numStUsed})
+		cdo=cliData(meta, gdat)
 		return cdo
 
 
