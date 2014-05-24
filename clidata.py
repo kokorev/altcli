@@ -11,6 +11,8 @@ __email__ = 'vasilykokorev@gmail.com'
 from common import *
 import clicomp as cc
 import numpy as np
+from scipy import stats
+from math import isnan
 
 def saveRes(method):
 	"""
@@ -336,8 +338,8 @@ class cliData:
 
 	def getSeasonsData(self,seasons):
 		"""
-		Кэшируюшая функция получения данных по заданым сезонам
-		может принимать как словарь {'название сезона': [список месяцов]} так и списоко имён сезонов
+		Кэшируюшая функция получения данных по каждому месяцу по заданого сезона
+		может принимать как словарь {'название сезона': [список месяцов]} так и список имён сезонов
 		"""
 		res=dict()
 		def workStrSeas(seas):
@@ -347,7 +349,6 @@ class cliData:
 				else:
 					raise KeyError, "There is no season %s in seasonsCache. Set seasons in dict not string form"%seas
 			return season
-
 		teastedSeas=dict()
 		if type(seasons) is list:
 			for val in seasons:
@@ -420,15 +421,20 @@ class cliData:
 		return sdatMasked
 
 
-#	@cache
-#	def getSeasonSeries(self, season, yMin= -1, yMax= -1):
-#		"""
-#		возвращает ряд средних по сезоном для каждого года в интервале
-#		Аллиас устаревшей retS_avgData
-#		"""
-#		yMin, yMax,i1,i2 = self.setPeriod(yMin, yMax)
-#		dat,yList=self.getSeasonsData(season)
-#		return [round(d.mean(), self.precision) if not d.any() else None for d in dat[i1:i2+1]],yList
+	def getSeasonsSeries(self, seasons):
+		"""В отличии от getSeasonsData возвращает сезонное значение величины для каждого года,
+		а не значения для каждого месяца сезона. Для осакдов сезоннов значение - сумма месячных,
+		для остальных велечин - среднее
+		"""
+		dat=self.getSeasonsData(seasons)
+		res=dict()
+		for sn,d in dat.items():
+			if self.meta['dt']=='prec':
+				r=d.sum(axis=1)
+			else:
+				r=d.mean(axis=1)
+			res[sn]=r
+		return res
 
 
 	def getParamSeries(self,functName, params=[], yMin=-1, yMax=-1, converter=None):
@@ -494,15 +500,30 @@ class cliData:
 		 Послдение два возвращаемых значений можно использовать для расчёта
 		 slope, intercept, r_value, p_value, std_err = stats.linregress(time,res)
 		"""
-		from scipy import stats
-		from math import isnan
 		if precision is None: precision=self.precision+2
 		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
-		res=np.ma.average(self.data[i1:i2+1,:], axis=1)
+		res=self.getSeasonsSeries({'y':range(1,13)})['y']
+		res=res[i1:i2+1]
 		time=self.yList[i1:i2+1]
 		slope, intercept, r_value, p_value, std_err = stats.linregress(time, res)
 		if isnan(slope): slope = None
 		return round(slope, precision), round(intercept,precision), res.round(self.precision), time
+
+
+	def s_trend(self,yMin= -1, yMax= -1, seasToCalc=False, precision=None):
+		"""
+		"""
+		if precision is None: precision=self.precision+2
+		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		allSdat = self.getSeasonsSeries(seasToCalc)
+		res=dict()
+		for sn,vals in allSdat.items():
+			time=self.yList[i1:i2+1]
+			val=vals[i1:i2+1]
+			slope, intercept, r_value, p_value, std_err = stats.linregress(time, val)
+			if isnan(slope): slope = None
+			res[sn]=[round(slope, precision), round(intercept,precision), val.round(self.precision), time]
+		return res
 
 
 	@cache
