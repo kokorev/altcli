@@ -156,6 +156,7 @@ class cliData:
 		self.yMin, self.yMax = min(self.yList), max(self.yList)
 		self.meta['yMin'] = self.yMin
 		self.meta['yMax'] = self.yMax
+		self.meta['comment'] = ''
 
 
 	def __getitem__(self, item):
@@ -302,6 +303,36 @@ class cliData:
 		else:
 			r=True
 		return r
+
+
+	def timeMerge(self, other, breakingPoint=None, useSelfIfOverlap=None):
+		"""
+		Обединяет два объекта в один. Методанные копируются из объекта self
+		@param other: cliData object
+		@return:
+		"""
+		ml=self.yList+other.yList
+		gdat1=[[y,list(v.filled(-999.99))] for y,v in zip(self.yList,self.data)]
+		gdat2=[[y,list(v.filled(-999.99))] for y,v in zip(other.yList,other.data)]
+		if gdat1[0][0]>gdat2[0][0]:
+			gdat1,gdat2=gdat2,gdat1
+		if useSelfIfOverlap is not None and breakingPoint is not None:
+			raise ValueError, 'breakingPoint and useSelfIfOverlap could not be used together'
+		if useSelfIfOverlap is True:
+			breakingPoint=gdat1[-1][0]+1
+		elif useSelfIfOverlap is False:
+			breakingPoint=gdat2[0][0]
+		if breakingPoint is not None:
+			gdat1=[v for v in gdat1 if v[0]<breakingPoint]
+			gdat2=[v for v in gdat2 if v[0]>=breakingPoint]
+		gdat=gdat1+gdat2
+		newYlist=[v[0] for v in gdat]
+		assert len(set(newYlist))==len(newYlist), 'duplicating years'
+		gdat.sort(key=lambda a:a[0])
+		meta=dict(self.meta)
+		meta['comment']+='merged with objects %s ; '%str(other.meta)
+		return cliData(meta,gdat)
+
 
 
 	def clearcache(self):
