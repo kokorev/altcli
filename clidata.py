@@ -225,8 +225,8 @@ class cliData:
 			res=dict()
 		dat = []
 		for line in stxt[dataInd].split('\n'):
-			if line == '': continue
 			ln = line.strip()
+			if line == '': continue
 			arr = [(float(v) if v != 'None' else -999.99) for v in ln.split('\t')]
 			dat.append([int(arr[0]), arr[1:]])
 		aco = cliData(meta, gdat=dat,fillValue=-999.99)
