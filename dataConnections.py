@@ -10,6 +10,9 @@ __email__ = 'vasilykokorev@gmail.com'
 
 from clidata import cliData
 from clidataSet import createCliDat
+from datetime import datetime
+from geocalc import cLon
+
 
 class cmip5connection():
 	"""
@@ -17,8 +20,6 @@ class cmip5connection():
 	"""
 	def __init__(self, fn, convert=True):
 		import netCDF4 as nc
-		from datetime import datetime
-		from geocalc import cLon
 		self.f=nc.Dataset(fn)
 		if self.f.project_id!='CMIP5':
 			print 'projet_id is "%s" not "CMIP5"'%self.f.project_id
@@ -42,16 +43,22 @@ class cmip5connection():
 		self.latvals=[self.lat[l] for l in range(self.lat.size)]
 		self.lon=self.f.variables['lon']
 		self.lonvals=[cLon(self.lon[l]) for l in range(self.lon.size)]
+		if self.f.variables['time'].units=='days since 1-01-01 00:00:00':
+			self.f.variables['time'].units='days since 0001-01-01 00:00:00'
+		elif self.f.variables['time'].units=='days since  850-1-1 00:00:00':
+			self.f.variables['time'].units='days since 0850-1-1 00:00:00'
 		try:
 			self.startDate=nc.num2date(self.f.variables['time'][0], self.f.variables['time'].units,
 									   self.f.variables['time'].calendar)
 		except ValueError:
-			if self.f.variables['time'].units=='days since 1-01-01 00:00:00':
-				self.startDate=datetime(1,1,1)
-			else:
-				print 'Warning! failed to parse date string -%s. Model id - %s. startDate '\
-				  'set to 0850-1-1 assuming model is MPI'%(self.f.variables['time'].units,self.f.model_id)
-				self.startDate=datetime(850,1,1)
+			raise
+			print 'Warning! failed to parse date string -%s. Model id - %s. startDate set to 0850-1-1 assuming model is MPI'%(self.f.variables['time'].units,self.f.model_id)
+			# if self.f.variables['time'].units=='days since 1-01-01 00:00:00':
+			# 	self.startDate=datetime(1,1,1)
+			# else:
+			# 	print 'Warning! failed to parse date string -%s. Model id - %s. startDate '\
+			# 	  'set to 0850-1-1 assuming model is MPI'%(self.f.variables['time'].units,self.f.model_id)
+			# 	self.startDate=datetime(850,1,1)
 		self.startYear = int(self.startDate.year)
 		self.startMonth = int(self.startDate.month)
 		self.warningShown = False
@@ -98,6 +105,40 @@ class cmip5connection():
 				gdat.append([tyear, [self.convertValue(v, year=tyear, month=mn+1) for mn,v in enumerate(vals[i:i+12])]])
 		return createCliDat(meta=meta, gdat=gdat)
 
+
+	def getArray(self,yMin=None,yMax=None,month=None,latMin=None,lonMin=None,latMax=None,lonMax=None):
+		"""
+		Возвращает трехмерный numpy массив значений, ограниченный заданными широтами и временем
+		"""
+		from netCDF4 import num2date
+		import numpy as np
+		date=num2date(self.f.variables['time'][:], self.f.variables['time'].units, self.f.variables['time'].calendar)
+		var=np.array(self.var)
+		timeArr=np.array([(v.year,v.month, v.day) for v in date],
+						 dtype=[('year','i4'), ('month','i2'), ('day','i2')])
+		timeMask=np.ones(timeArr['year'].shape,dtype=bool)
+		if yMin is not None:
+			timeMask = timeMask & (timeArr['year'] >= yMin)
+		if yMax is not None:
+			timeMask = timeMask & (timeArr['year'] <= yMax)
+		if month is not None:
+			timeMask = timeMask & (timeArr['month']==month)
+		var=var[timeMask,:,:]
+		lat=np.array(self.lat)
+		latMask=np.ones(lat.shape,dtype=bool)
+		if latMin is not None:
+			latMask = latMask & (lat >= latMin)
+		if latMax is not None:
+			latMask = latMask & (lat <= latMax)
+		var=var[:,latMask,:]
+		lon=np.array(self.lon)
+		lonMask=np.ones(lon.shape,dtype=bool)
+		if lonMin is not None:
+			lonMask = lonMask & (lon >= lonMin)
+		if lonMax is not None:
+			lonMask = lonMask & (lon <= lonMax)
+		var=var[:,:,lonMask]
+		return var
 
 	def getAllMetaDict(self):
 		"""
