@@ -49,11 +49,13 @@ class cmip5connection():
 		self.lon=self.f.variables['lon']
 		self.lonvals=[cLon(self.lon[l]) for l in range(self.lon.size)]
 		if self.f.variables['time'].units=='days since 1-01-01 00:00:00':
-			self.f.variables['time'].units='days since 0001-01-01 00:00:00'
+			self.timeUnits='days since 0001-01-01 00:00:00'
 		elif self.f.variables['time'].units=='days since  850-1-1 00:00:00':
-			self.f.variables['time'].units='days since 0850-1-1 00:00:00'
+			self.timeUnits='days since 0850-1-1 00:00:00'
+		else:
+			self.timeUnits=self.f.variables['time'].units
 		try:
-			self.startDate=nc.num2date(self.f.variables['time'][0], self.f.variables['time'].units,
+			self.startDate=nc.num2date(self.f.variables['time'][0], self.timeUnits,
 									   self.f.variables['time'].calendar)
 		except ValueError:
 			raise
@@ -120,7 +122,7 @@ class cmip5connection():
 		"""
 		from netCDF4 import num2date
 		import numpy as np
-		date=num2date(self.f.variables['time'][:], self.f.variables['time'].units, self.f.variables['time'].calendar)
+		date=num2date(self.f.variables['time'][:], self.timeUnits, self.f.variables['time'].calendar)
 		var=np.array(self.var)
 		timeArr=np.array([(v.year,v.month, v.day) for v in date],
 						 dtype=[('year','i4'), ('month','i2'), ('day','i2')])
