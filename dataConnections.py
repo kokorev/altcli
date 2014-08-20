@@ -10,6 +10,7 @@ __email__ = 'vasilykokorev@gmail.com'
 
 from clidata import cliData
 from clidataSet import createCliDat
+from altCli import config
 
 class cmip5connection():
 	"""
@@ -23,7 +24,12 @@ class cmip5connection():
 		if self.f.project_id!='CMIP5':
 			print 'projet_id is "%s" not "CMIP5"'%self.f.project_id
 		# определяем основную переменную в массиве, это так которая зависит от трёх других
-		self.dt=[v for v in self.f.variables if self.f.variables[v].ndim==3][0]
+		dtList=[v for v in self.f.variables if self.f.variables[v].ndim==3]
+		if len(dtList)>1:
+			tmpcfg = config()
+			dtList=[tmpDt for tmpDt in dtList if tmpDt in tmpcfg.elSynom]
+			if len(dtList)>1: raise TypeError, "Unknown data type in nc file"
+		self.dt=dtList[0]
 		if self.dt=='tas' and convert is True:
 			from tempConvert import kelvin2celsius
 			self.convertValue=lambda val,year,month: kelvin2celsius(val)
@@ -95,7 +101,10 @@ class cmip5connection():
 		else:
 			for yn,i in enumerate(range(0,len(vals),12)):
 				tyear=self.startYear+yn
-				gdat.append([tyear, [self.convertValue(v, year=tyear, month=mn+1) for mn,v in enumerate(vals[i:i+12])]])
+				lineVals=[self.convertValue(v, year=tyear, month=mn+1) for mn,v in enumerate(vals[i:i+12])]
+				if len(lineVals)==12:
+					#TODO: сделать нормальное заполнение пропусками, У некоторыйх модлей (EC_EARTH) в последнем году расчёта только 11 месяцев, пропускаем такие года
+					gdat.append([tyear, lineVals])
 		return createCliDat(meta=meta, gdat=gdat)
 
 
