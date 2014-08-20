@@ -226,7 +226,7 @@ class cliData:
 		dat = []
 		for line in stxt[dataInd].split('\n'):
 			ln = line.strip()
-			if line == '': continue
+			if ln == '': continue
 			arr = [(float(v) if v != 'None' else -999.99) for v in ln.split('\t')]
 			dat.append([int(arr[0]), arr[1:]])
 		aco = cliData(meta, gdat=dat,fillValue=-999.99)
