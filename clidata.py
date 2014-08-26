@@ -498,7 +498,14 @@ class cliData:
 		out: res(12)  - нормы за каждый месяц
 		"""
 		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
-		res=np.ma.average(self.data[i1:i2+1,:], axis=0)
+		a=self.data[i1:i2+1]
+		try:
+			if not a.mask.any():
+				res=np.array(a).mean(axis=0)
+			else:
+				res=np.ma.mean(a, axis=0)
+		except:
+			raise
 		return [round(v,self.precision) for v in res]
 
 
