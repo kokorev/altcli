@@ -153,7 +153,7 @@ class cliData:
 		self.yList=[strdat[0] for strdat in d]
 		if len(self.yList) == 0: raise ValueError, 'Не пропущенные значения отсутствуют'
 		self.timeInds={y:i for i,y in enumerate(self.yList)}
-		self.yMin, self.yMax = min(self.yList), max(self.yList)
+		self.yMin, self.yMax = int(min(self.yList)), int(max(self.yList))
 		self.meta['yMin'] = self.yMin
 		self.meta['yMax'] = self.yMax
 		self.meta['comment'] = ''
