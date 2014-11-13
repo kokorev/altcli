@@ -256,50 +256,69 @@ class GRDCConnection():
 	Реализует чтение DOS-ASCII формата данных GRDC по стоку рек
 	"""
 	def __init__(self, dataFolder, dt='runoff'):
+		self.cliSetMeta={'source':'GRDC'}
 		self.dataFolder=dataFolder
 		self.dt=dt
 		self.fnList=glob(os.path.join(dataFolder, '*.mon'))
 		self.meta={int(os.path.split(fn)[1].split('.')[0]):None for fn in self.fnList}
+		self.cdos={ind:None for ind in self.meta}
 
 
 	def getPoint(self, item):
 		if item not in self.meta: raise KeyError, "wrong data index"
-		fn=os.path.join(self.dataFolder, '%i.mon'%item)
-		with open(fn,'r') as f: lines=f.readlines()
-		dat=np.loadtxt(lines,comments='#', delimiter=';',skiprows=41,
-		               dtype={'names':['date','hh:mm','original','calculated','flag'],'formats':['S10','S5','f4', 'f4', 'f4']})
-		dat=np.array([[int(ym[0]), int(ym[1]), v] for ym,v in zip( [v.split('-') for v in dat['date']] , dat['original'])])
-		gdat=[]
-		years=list(set(dat[:,0]))
-		for y in years:
-			gdatline=dat[dat[:,0]==y][:,2]
-			assert len(gdatline)==12
-			gdat.append([y,gdatline])
-		meta=self.parseMeta(lines)
-		meta['yMin']=min(years)
-		meta['yMax']=max(years)
-		meta['dt']=self.dt
-		return createCliDat(gdat=gdat,meta=meta)
+		if self.cdos[item] is None:
+			fn=os.path.join(self.dataFolder, '%i.mon'%item)
+			with open(fn,'r') as f: lines=f.readlines()
+			dat=np.loadtxt(lines,comments='#', delimiter=';',skiprows=41,
+						   dtype={'names':['date','hh:mm','original','calculated','flag'],'formats':['S10','S5','f4', 'f4', 'f4']})
+			dat=np.array([[int(ym[0]), int(ym[1]), v] for ym,v in zip( [v.split('-') for v in dat['date']] , dat['original'])])
+			gdat=[]
+			years=list(set(dat[:,0]))
+			for y in years:
+				gdatline=list(dat[dat[:,0]==y][:,2])
+				assert len(gdatline)==12
+				gdat.append([y,gdatline])
+			meta=self.parseMeta(lines)
+			meta['yMin']=min(years)
+			meta['yMax']=max(years)
+			cdo=createCliDat(gdat=gdat,meta=meta)
+			self.cdos[item]=cdo
+			self.meta[item]=meta
+		else:
+			cdo=self.cdos[item]
+		return cdo
 
 
 	def parseMeta(self,lines):
 		lns=[[v.strip() for v in ln.split(':')] for ln in lines[:40]]
-		lnsd={ln[0]:ln[1] for ln in lns}
+		lnsd={ln[0][2:]:ln[1] for ln in lns if len(ln)>1}
 		meta=dict()
+		meta['dt']=self.dt
 		meta['river']=lnsd['River']
-		meta['lon']=lnsd['Longitude (de. °)']
-		meta['lat']=lnsd['Latitude (dec. °)']
-		meta['ind']=lnsd['GRDC-No.']
-		meta['catchment area (kmІ)']=lnsd['Catchment area (kmІ)']
-		meta['next d/s station']=lnsd['Next d/s station']
+		meta['lon']=float([lnsd[k] for k in lnsd if 'Longitude' in k][0])
+		meta['lat']=float([lnsd[k] for k in lnsd if 'Latitude' in k][0])
+		meta['ind']=int(lnsd['GRDC-No.'])
+		meta['catchment area (kmІ)']=float([lnsd[k] for k in lnsd if 'Catchment area' in k][0])
+		try:
+			meta['next d/s station']=int(lnsd['Next d/s station'])
+		except ValueError:
+			meta['next d/s station']=None
 		meta['station']=lnsd['Station']
-		meta['alt']=lnsd['Altitude (m.a.s.l)']
+		meta['alt']=float(lnsd['Altitude (m.a.s.l)'])
 		meta['file generation data']=lnsd['file generation data']
 		meta['last update']=lnsd['Last update']
 		meta['country']=lnsd['Country']
 		meta['unit']=lnsd['Unit']
 		return meta
 
+	def getAllMetaDict(self):
+		"""
+		Возвращает словарь метаданных для всех узлов сетки
+		"""
+		for ind in self.meta:
+			if self.meta[ind] is not None: continue
+			self.getPoint(ind)
+		return self.meta
 
 
 
