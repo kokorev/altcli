@@ -13,13 +13,17 @@ from clidataSet import createCliDat
 from altCli import config
 from datetime import datetime
 from geocalc import cLon
+import os.path
+import netCDF4 as nc
+from netCDF4 import num2date
+import numpy as np
+from glob import glob
 
 class cmip5connection():
 	"""
 	Реализует чтение .nc файлов с данными cmip5 месячного разрешения
 	"""
 	def __init__(self, fn, convert=True):
-		import netCDF4 as nc
 		self.f=nc.Dataset(fn)
 		if self.f.project_id!='CMIP5':
 			print 'projet_id is "%s" not "CMIP5"'%self.f.project_id
@@ -120,8 +124,6 @@ class cmip5connection():
 		"""
 		Возвращает трехмерный numpy массив значений, ограниченный заданными широтами и временем
 		"""
-		from netCDF4 import num2date
-		import numpy as np
 		date=num2date(self.f.variables['time'][:], self.timeUnits, self.f.variables['time'].calendar)
 		var=np.array(self.var)
 		timeArr=np.array([(v.year,v.month, v.day) for v in date],
@@ -212,7 +214,6 @@ class cliGisConnection():
 	Реализует чтение формата данных использовашегося в cliGis
 	"""
 	def __init__(self, dataFn, metaFn, fillValue=-999., dt=None):
-		import os.path
 		self.cliSetMeta={'source':'cliGis'}
 		self.fillValue=fillValue
 		if dt is None:
@@ -248,5 +249,59 @@ class cliGisConnection():
 		Возвращает словарь метаданных для всех узлов сетки
 		"""
 		return self.meta
+
+
+class GRDCConnection():
+	"""
+	Реализует чтение DOS-ASCII формата данных GRDC по стоку рек
+	"""
+	def __init__(self, dataFolder, dt='runoff'):
+		self.dataFolder=dataFolder
+		self.dt=dt
+		self.fnList=glob(os.path.join(dataFolder, '*.mon'))
+		self.meta={int(os.path.split(fn)[1].split('.')[0]):None for fn in self.fnList}
+
+
+	def getPoint(self, item):
+		if item not in self.meta: raise KeyError, "wrong data index"
+		fn=os.path.join(self.dataFolder, '%i.mon'%item)
+		with open(fn,'r') as f: lines=f.readlines()
+		dat=np.loadtxt(lines,comments='#', delimiter=';',skiprows=41,
+		               dtype={'names':['date','hh:mm','original','calculated','flag'],'formats':['S10','S5','f4', 'f4', 'f4']})
+		dat=np.array([[int(ym[0]), int(ym[1]), v] for ym,v in zip( [v.split('-') for v in dat['date']] , dat['original'])])
+		gdat=[]
+		years=list(set(dat[:,0]))
+		for y in years:
+			gdatline=dat[dat[:,0]==y][:,2]
+			assert len(gdatline)==12
+			gdat.append([y,gdatline])
+		meta=self.parseMeta(lines)
+		meta['yMin']=min(years)
+		meta['yMax']=max(years)
+		meta['dt']=self.dt
+		return createCliDat(gdat=gdat,meta=meta)
+
+
+	def parseMeta(self,lines):
+		lns=[[v.strip() for v in ln.split(':')] for ln in lines[:40]]
+		lnsd={ln[0]:ln[1] for ln in lns}
+		meta=dict()
+		meta['river']=lnsd['River']
+		meta['lon']=lnsd['Longitude (de. °)']
+		meta['lat']=lnsd['Latitude (dec. °)']
+		meta['ind']=lnsd['GRDC-No.']
+		meta['catchment area (kmІ)']=lnsd['Catchment area (kmІ)']
+		meta['next d/s station']=lnsd['Next d/s station']
+		meta['station']=lnsd['Station']
+		meta['alt']=lnsd['Altitude (m.a.s.l)']
+		meta['file generation data']=lnsd['file generation data']
+		meta['last update']=lnsd['Last update']
+		meta['country']=lnsd['Country']
+		meta['unit']=lnsd['Unit']
+		return meta
+
+
+
+
 
 
