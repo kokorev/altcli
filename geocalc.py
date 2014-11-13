@@ -17,6 +17,7 @@ def calcDist(lat1, lon1, lat2, lon2):
 	растояние считаетсья в метрах, результат округляеться до целых метров ф-ей int()
 	"""
 	import math
+	if lat1==lat2 and lon1==lon2: return 0,0
 	rad = 6372795. # радиус сферы (Земли)
 	#косинусы и синусы широт и разницы долгот
 	cl1 = math.cos(lat1 * math.pi / 180.)
