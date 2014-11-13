@@ -10,6 +10,7 @@ __author__ = 'Vasily Kokorev'
 __email__ = 'vasilykokorev@gmail.com'
 
 from clidata import *
+from geocalc import calcDist
 from common import timeit
 
 
@@ -220,7 +221,7 @@ class metaData:
 		res = []
 		for st in self: #tSt
 			m=st.meta
-			dist, angl = self.calcDist(lat, lon, m['lat'], m['lon'])
+			dist, angl = calcDist(lat, lon, m['lat'], m['lon'])
 			res.append([dist, m['ind']])
 		res = sorted(res, key=lambda a:a[0])
 		return res[:x]
