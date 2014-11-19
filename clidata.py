@@ -1,9 +1,6 @@
 ﻿# coding=utf-8
 """
-Модуль работы с базой климатических данных
-реализует функции выборки данных из базы по заданным параметрам,
-функции расчёта основных климатических характеристик,
-функции визуализации результатов
+Custom types for monthly climate timeseries
 """
 __author__ = 'Vasily Kokorev'
 __email__ = 'vasilykokorev@gmail.com'
@@ -13,33 +10,8 @@ import clicomp as cc
 import numpy as np
 from scipy import stats
 from math import isnan
-
-def saveRes(method):
-	"""
-	Декоратор. Сохраняет результат работы функции в словарь self.res
-	Ключ слваря составляется по форме "имя функции--список значений аргументов через запятую"
-	"""
-	import functools
-	@functools.wraps(method)
-	def wrapper(self, *args, **kwargs):
-		dictId = getSaveResId(method, *args, **kwargs)
-		result = method(self, *args, **kwargs)
-		if self.__name__ == 'yearData':
-			# если функцию вызвал объект yearData не имеющий родителся
-			# то сохраняем результат в self.res и на этом заканчиваем
-			# если self имеет родителя
-			# то сохраняем результат в self.res и в self.parent.res
-			# при этом во втором случае ключ словаря имеет приставку 'year-%i-' % self.year
-			if self.parent == None:
-				self.res.update({dictId:result})
-			else:
-				self.res.update({dictId:result})
-				dictId = 'year-%i-' % self.year + dictId
-				self.parent.res.update({dictId:result})
-		else:
-			self.res.update({dictId:result})
-		return result
-	return wrapper
+import os
+import functools
 
 def timeit(method):
 	def timed(*args, **kw):
@@ -54,9 +26,7 @@ def timeit(method):
 
 def getCacheId(method, *args, **kwargs):
 	"""
-	функция принимает метод и его аргументы, а возвращает индификатор под которым
-	результаты расчёта этого метода с этими параметрами были записаны в словарь
-	Ключ слваря составляетьс по форме "имя функции--список значений аргументов через запятую"
+	decorator that implement caching for cliData
 	"""
 	dId = method.__name__ + '--'
 	for s in args: dId += str(s) + ','
@@ -67,7 +37,6 @@ def cache(method):
 	"""
 	Декоратор. То же что и saveRes, но кеширующий
 	"""
-	import functools
 	@functools.wraps(method)
 	def wrapper(self, *args, **kwargs):
 		dictId = getCacheId(method, *args, **kwargs)
@@ -92,8 +61,36 @@ def cache(method):
 		return result
 	return wrapper
 
+# def saveRes(method):
+# 	"""
+# 	deprecated version of @cache
+# 	"""
+# 	@functools.wraps(method)
+# 	def wrapper(self, *args, **kwargs):
+# 		dictId = getSaveResId(method, *args, **kwargs)
+# 		result = method(self, *args, **kwargs)
+# 		if self.__name__ == 'yearData':
+# 			# если функцию вызвал объект yearData не имеющий родителся
+# 			# то сохраняем результат в self.res и на этом заканчиваем
+# 			# если self имеет родителя
+# 			# то сохраняем результат в self.res и в self.parent.res
+# 			# при этом во втором случае ключ словаря имеет приставку 'year-%i-' % self.year
+# 			if self.parent == None:
+# 				self.res.update({dictId:result})
+# 			else:
+# 				self.res.update({dictId:result})
+# 				dictId = 'year-%i-' % self.year + dictId
+# 				self.parent.res.update({dictId:result})
+# 		else:
+# 			self.res.update({dictId:result})
+# 		return result
+# 	return wrapper
+
 
 class noDataException(Exception):
+	"""
+	missing data exception. To be implemented
+	"""
 	def __init__(self, yMin,yMax):
 		self.yMin = yMin
 		self.yMax = yMax
@@ -105,14 +102,18 @@ class noDataException(Exception):
 
 class cliData:
 	"""
-	Класс реализующий функции загрузки и обработки климатических данных не зависящих от их типа
+	Custom data type for monthly climate data in a point
 	"""
 	def __init__(self, meta, gdat, cfg=None, fillValue=None):
 		"""
-		Для создания объекта надо передать словарь с метоинформацией meta={'ind':20274, 'dt':'temp', ...}
-		и указатель на cfg или массив с данными gdat
+		meta - basic metadata dictionary, should contain at least 'dt' and 'ind' keys for climate parameter and station index
+		'ind' could be None for region mean data etc
+		'lat' and 'lon' parameters are recommended
+		meta={'ind':20274, 'dt':'temp', ...}
+		gdat - monthly data
 		gdat=[[year, [val1, val2, ..., val12]], [...]]
-		cfg=config()
+		fillValue - missing data flag for gdat array
+		cfg=config() - exist mostly for backwards compatibility reasons
 		"""
 		#todo: принимать numpy array в качестве gdat
 		if cfg == None: cfg = config()
@@ -146,7 +147,6 @@ class cliData:
 			# если нет пропусков
 			#self.data=np.array([strdat[1] for strdat in d])
 			#self.noGaps=True
-
 		if fillValue is None: np.place(self.data, np.ma.getmaskarray(self.data), [self.filledValue])
 		#маска всегда должны быть массивом, иначе сложно проверить не пропущено ли значение
 		self.data.mask=np.ma.getmaskarray(self.data)
@@ -161,8 +161,7 @@ class cliData:
 
 	def __getitem__(self, item):
 		"""
-		Системная функция отвечающая за обработки оператора []
-		возвращает экземпляр yearData
+		returns yearData instance for single year and cliData instance for slice
 		"""
 		def createYearDataObj(self, item):
 			"""
@@ -207,7 +206,7 @@ class cliData:
 	@staticmethod
 	def load(fn, results=False):
 		"""
-		Загружает объект cliDat из файла *.acd
+		load cliData instance from altCli plaintext internal format *.acd
 		"""
 		if fn[-4:] != '.acd': fn += '.acd'
 		f = open(fn, 'r')
@@ -236,9 +235,8 @@ class cliData:
 
 	def save(self,fn, replace=False, results=False):
 		"""
-		Сохраняет объект cliData в файл *.acd
+		save cliData instance to *.acd
 		"""
-		import os
 		if fn[-4:] != '.acd': fn += '.acd'
 		if os.path.exists(fn):
 			if replace == False:
@@ -974,7 +972,7 @@ class temp_yearData(yearData):
 		return cc.sumMoreThen(self.data,0,2)*30.5
 
 
-	@saveRes
+	@cache
 	def conditionalSum(self,x, c='GT'):
 		"""
 		Уточнённый алгоритм расчёта градусо дней
@@ -1040,7 +1038,7 @@ class prec_yearData(yearData):
 	"""
 
 	"""
-	@saveRes
+	@cache
 	def sumMoreThen(self, x):
 		""" Возвращает сумму значений больше X """
 		r=cc.sumMoreThen([v if not m else None for v,m in zip(self.data, self.data.mask)],x,precision=self.precision)
