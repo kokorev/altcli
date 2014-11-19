@@ -1,17 +1,15 @@
 # coding=utf-8
 """
-Содержит классы подключений к различным базам и массивам данных.
-Каждый класс должен реализовывать следующие функции
-	getAllMetaDict() - возвращает словарь метаданных для всех станция в массиве
-	getPoint(ind) - возвращает экземпляр cliData для станции(точки) с данным индексом
+Collection of classes that allows one to load different data formats to altCli
+Every class should implement to functions
+	getAllMetaDict() - return dictionary of meta information for every station or point in dataset
+	getPoint(ind) - return cliData instanse of point with given index
 """
 __author__ = 'Vasily Kokorev'
 __email__ = 'vasilykokorev@gmail.com'
 
-from clidata import cliData
 from clidataSet import createCliDat
 from altCli import config
-from datetime import datetime
 from geocalc import cLon
 import os.path
 import netCDF4 as nc
@@ -21,7 +19,7 @@ from glob import glob
 
 class cmip5connection():
 	"""
-	Реализует чтение .nc файлов с данными cmip5 месячного разрешения
+	allow one to use original CMIP5 data in netCDF format
 	"""
 	def __init__(self, fn, convert=True):
 		self.f=nc.Dataset(fn)
@@ -80,8 +78,7 @@ class cmip5connection():
 	def getPoint(self, item):
 		"""
 		self[(latInd,lonInd)] возвращает объект cliData
-		После долго путанцы было решено, что ф-я может принимать либо номер яцейки либо индексы координат,
-		но не сами координаты
+		item could be either point index or (latIndex, lonIndex) but not (lat, lon). Use self.latlon2latIndlonInd()
 		"""
 		try:
 			try:
@@ -211,7 +208,7 @@ class cmip5connection():
 
 class cliGisConnection():
 	"""
-	Реализует чтение формата данных использовашегося в cliGis
+	climate data format for State Hydrological Institute
 	"""
 	def __init__(self, dataFn, metaFn, fillValue=-999., dt=None):
 		self.cliSetMeta={'source':'cliGis'}
@@ -253,7 +250,7 @@ class cliGisConnection():
 
 class GRDCConnection():
 	"""
-	Реализует чтение DOS-ASCII формата данных GRDC по стоку рек
+	GRDC river runoff ascii format
 	"""
 	def __init__(self, dataFolder, dt='runoff'):
 		self.cliSetMeta={'source':'GRDC'}
