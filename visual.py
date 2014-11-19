@@ -1,16 +1,22 @@
 # coding=utf-8
 """
-
+some basic visualisations for cliData
 """
+import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib import colors
+from scipy import stats
+from altCli.clicomp import movingAvg,removeNone
+
 
 def getRedBlueCM(segments=100,reverse=False):
 	"""
+	return red-blue color map
 	Возвращает красно-синюю палетку разбитую на заданое число сегментов
 	Параметры:
 		segments=100 - число равных отреков в палетке
 		reverse=False - красный положительные значения, синие отрицательные. Если True то наоборот
 	"""
-	from matplotlib import colors
 	bv=((0.0, 1.0, 1.0),(0.5, 1.0, 1.0),(1.0, 0.0, 0.0))
 	rv=((0.0, 0.0, 0.0),(0.5, 1.0, 1.0),(1.0, 1.0, 1.0))
 	gv=((0.0, 0.0, 0.0),(0.5, 1.0, 1.0),(1.0, 0.0, 0.0))
@@ -37,9 +43,6 @@ def interannualVariability(vals,time,trend=[None,None],fn=None,smoothing=None, x
 		xLim=[None,None], yLim=[None,None] - границы осей на графике. None - задать автоматически,
 			иначе используются заданые значения.
 	"""
-	import matplotlib.pyplot as plt
-	from altCli.clicomp import movingAvg,removeNone
-	from scipy import stats
 	fig=plt.figure(facecolor='w', edgecolor='k',figsize=(20,12),frameon=False)#,dpi=300
 	ax=fig.add_subplot(111)
 	ax.grid(True)
@@ -107,8 +110,6 @@ def trendsMatrix(cdo, fn=None, minTrlen=20):
 		минимальная длинна тренда
 		сезон?
 	"""
-	import matplotlib
-	import matplotlib.pyplot as plt
 	cdict = {'blue': ((0.0, 1.0, 1.0),
 			 (0.5, 1.0, 1.0),
 			 (1.0, 0.0, 0.0)),
