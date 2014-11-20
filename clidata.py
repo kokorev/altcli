@@ -178,7 +178,7 @@ class cliData:
 		if isinstance(item, slice):
 			start = item.start if item.start >= self.yMin else self.yMin
 			stop = item.stop if item.stop <= self.yMax else self.yMax
-			yMin,yMax,i1,i2=self.setPeriod(start,stop)
+			yMin,yMax,i1,i2=self._setPeriod(start,stop)
 			dat=self.data[i1:i2+1].copy()
 			yList=self.yList[i1:i2+1]
 			gdat=[[y,list(dat[i].data)] for i,y in enumerate(yList)]
@@ -335,8 +335,12 @@ class cliData:
 
 	def clearcache(self):
 		"""
-		Очищает кэш от сохранённых значений. необходимо вызывать если изменились исходные данные
+		There are only two hard things in Computer Science: cache invalidation and naming things.
+		-- Phil Karlton
+
+			That's why we just clear all of it if we suspect something.
 		"""
+		#todo: write an actual cache invalidation algorithm (very low priority)
 		self.res = dict()
 
 
@@ -344,14 +348,19 @@ class cliData:
 	@cache
 	def datapass(self):
 		"""
-		процент пропущенных данных
+		percent of missing data
 		"""
 		obs=np.ma.count(self.data)
 		passes=np.ma.count_masked(self.data)
 		return passes/((obs+passes)/100.)
 
 
-	def setPeriod(self, yMin, yMax):
+	def _setPeriod(self, yMin, yMax):
+		"""
+		@param yMin:
+		@param yMax:
+		@return:
+		"""
 		userYMin,userYMax=yMin,yMax
 		yMin = self.meta['yMin'] if (yMin == -1) or (yMin < self.meta['yMin']) else yMin
 		yMax = self.meta['yMax'] if (yMax == -1) or (yMax > self.meta['yMax']) else yMax
@@ -368,8 +377,14 @@ class cliData:
 
 	def getSeasonsData(self,seasons):
 		"""
-		Кэшируюшая функция получения данных по каждому месяцу по заданого сезона
-		может принимать как словарь {'название сезона': [список месяцов]} так и список имён сезонов
+		@param seasons: {'seasonName':[monthNumber1, monthNumber2, ...], 'seasonName2'}
+		monthNumber [-inf,0), (0,+inf]
+		monthNumber=1 January
+		monthNumber=12 December
+		monthNumber=-1 December, year-1
+		monthNumber=13 January, year+1
+		example {'winter':[-1,1,2], year:range(1,13)}
+		@return: {seasName:{'dat':[[values for each month in season for each], ...], 'mlist':seasons[seasName]}, ... }
 		"""
 		res=dict()
 		def workStrSeas(seas):
@@ -412,9 +427,7 @@ class cliData:
 
 
 	def setSeasons(self,seasons):
-		"""
-		аллиас, ничего не возвращает в отличии от нормальной ф-ии, оставлен для совместимости
-		"""
+		"""	alias for backwards compatibility """
 		self.getSeasonsData(seasons)
 
 
@@ -452,9 +465,7 @@ class cliData:
 
 
 	def getSeasonsSeries(self, seasons):
-		"""В отличии от getSeasonsData возвращает сезонное значение величины для каждого года,
-		а не значения для каждого месяца сезона. Для осакдов сезоннов значение - сумма месячных,
-		для остальных велечин - среднее
+		""" return mean season value for each year (sum if precip)
 		"""
 		dat=self.getSeasonsData(seasons)
 		res=dict()
@@ -469,10 +480,15 @@ class cliData:
 
 	def getParamSeries(self,functName, params=[], yMin=-1, yMax=-1, converter=None):
 		"""
-		Возвращает ряд значенией functName(*params) для каждого экземпляра yearData
-		в интервале yMin - yMax
+		return function value for each year
+		@param functName: yearData method name
+		@param params:  yearData method parameters
+		@param yMin: start from year
+		@param yMax: go till year
+		@param converter: function to apply to result
+		@return: [yearData.functName(*params),], [year, ..]
 		"""
-		yMin, yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		yMin, yMax,i1,i2 = self._setPeriod(yMin, yMax)
 		res,time=[],[]
 		for y in range(yMin,yMax+1):
 			yobj=self[y]
@@ -490,12 +506,12 @@ class cliData:
 	@cache
 	def norm(self, yMin= -1, yMax= -1):
 		"""
-		функция считает норму температуры за каждый месяц в заданый период на заданной станции
-		in: minY,maxY - начальный и конечный года периода за который считаеться норма. включительно.
-		если не заданно расчитываеться за весь период self.data
-		out: res(12)  - нормы за каждый месяц
+		Climatic norm for some period
+		@param yMin:
+		@param yMax:
+		@return: [JanValue, ..., DecValue]
 		"""
-		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		yMin,yMax,i1,i2 = self._setPeriod(yMin, yMax)
 		a=self.data[i1:i2+1]
 		try:
 			if not a.mask.any():
@@ -510,16 +526,14 @@ class cliData:
 	@cache
 	def s_norm(self, yMin= -1, yMax= -1, seasToCalc=False):
 		"""
-		Расчитывает среднесезонную норму
-		Принимет:
-			yMin, yMax - int, года начала и конца периода расчтё нормы
-			seasToCalc - list of str, dict сезоны по которым нужно расчитать норму
-			при использовании данной ф-ии через altCli_calc необходимо указать ТОЛЬКО один сезон, например ['winter']
-		Возвращает:
-			res - dict, значение нормы для каждого сезона {сезон: число, ...}
+		climatic norm for given season
+		@param yMin:
+		@param yMax:
+		@param seasToCalc: season definition
+		@return: {'seasonName': value}
 		"""
 		if seasToCalc == False:	seasToCalc = [s for s in self.seasonsCache]
-		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		yMin,yMax,i1,i2 = self._setPeriod(yMin, yMax)
 		sdat=self.getSeasonsData(seasToCalc)
 		res=dict()
 		for sname in sdat:
@@ -532,13 +546,14 @@ class cliData:
 	@cache
 	def trend(self, yMin= -1, yMax= -1, precision=None):
 		"""
-		 Ф-я рассчитывает наклон многолетнего тренда среднегодовой температуры
-		 Возвращает наклон, ряд значений среднегодовой температуры, ряд времени
-		 Послдение два возвращаемых значений можно использовать для расчёта
-		 slope, intercept, r_value, p_value, std_err = stats.linregress(time,res)
+		annual trend parameters
+		@param yMin:
+		@param yMax:
+		@param precision:
+		@return: slope, intercept, values, time
 		"""
 		if precision is None: precision=self.precision+2
-		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		yMin,yMax,i1,i2 = self._setPeriod(yMin, yMax)
 		res=self.getSeasonsSeries({'y':range(1,13)})['y']
 		res=res[i1:i2+1]
 		time=self.yList[i1:i2+1]
@@ -549,9 +564,15 @@ class cliData:
 
 	def s_trend(self,yMin= -1, yMax= -1, seasToCalc=False, precision=None):
 		"""
+		Seasonal trend parameters
+		@param yMin:
+		@param yMax:
+		@param seasToCalc:
+		@param precision:
+		@return: {'seasonName': [slope, intercept, values, time]}
 		"""
 		if precision is None: precision=self.precision+2
-		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		yMin,yMax,i1,i2 = self._setPeriod(yMin, yMax)
 		allSdat = self.getSeasonsSeries(seasToCalc)
 		res=dict()
 		for sn,vals in allSdat.items():
@@ -566,26 +587,19 @@ class cliData:
 	@cache
 	def trendParam(self, functName, params, yMin, yMax, converter=None, precision=None):
 		"""
-		расчитывает межгодовой тренд какого-либо параметра
-		принимает:
-			funct - str, имя функции объекта yearData расчитывающей параметр, тренд которого надо вычислить
-			param - list, параметры с которой надо вызвать ф-ю funct
-			yMin, yMax - int, года начала и конца периода за который расчитывается тренд
-			resInList - функция, если ф-я funct возвращает список,
-			то результат работы будет передоваться этой функции, которая должна возвращать только одно число
-		Возвращает:
-			slope - float, slope of the regression line
-			intercept - float, intercept of the regression line
-			r-value - float, correlation coefficient
-			p-value - float, two-sided p-value for a hypothesis test whose null hypothesis is that the slope is zero.
-			stderr - float, Standard error of the estimate
-			res,time - list, одномерные массивы по которым был расчитан тренд
+		Custom parameter trend
+		@param functName: yearData method name
+		@param params: yearData method parameters
+		@param yMin:
+		@param yMax:
+		@param converter: function to apply to yearData.method(*parameters) result
+		@param precision:
+		@return: slope, intercept, values, time
 		"""
 		from scipy import stats
 		from math import isnan
 		if precision is None: precision=self.precision+2
-		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
-		#converter=None
+		yMin,yMax,i1,i2 = self._setPeriod(yMin, yMax)
 		res,time=self.getParamSeries(functName, params, yMin, yMax, converter)
 		res,time=cc.removeNone(res,time)
 		slope, intercept, r_value, p_value, std_err = stats.linregress(time, res)
@@ -605,7 +619,7 @@ class cliData:
 		"""
 		#todo: было бы логичнее было бы использовать np.ma.anom(), но оно не работет по осям
 		# обсуждение топика https://github.com/numpy/numpy/issues/2814
-		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		yMin,yMax,i1,i2 = self._setPeriod(yMin, yMax)
 		normList = self.norm(norm_yMin, norm_yMax)
 		res=[]
 		for y in range(yMin,yMax+1):
@@ -632,7 +646,7 @@ class cliData:
 		"""
 		if seasToCalc == False:	seasToCalc = [s for s in self.seasonsCache]
 		sdat=self.getSeasonsData(seasToCalc)
-		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		yMin,yMax,i1,i2 = self._setPeriod(yMin, yMax)
 		res=dict()
 		for sname in sdat:
 			norm=self.s_norm(normMinY, normMaxY, seasToCalc=sname)[sname]
@@ -652,7 +666,7 @@ class cliData:
 		Возвращает:
 			res - list, среднемноголетние аномалии за каждый месяц
 		"""
-		yMin,yMax,i1,i2 = self.setPeriod(yMin, yMax)
+		yMin,yMax,i1,i2 = self._setPeriod(yMin, yMax)
 		dat=self.anomal(norm_yMin, norm_yMax, yMin, yMax)
 		res=np.ma.average(dat, axis=0)
 		return res
@@ -663,7 +677,7 @@ class cliData:
 		Возвращает объект cliData в котором все значения данного объекта переведены в аномалии от заданного периода
 		@return: cliData object
 		"""
-		yMin,yMax,i1,i2 = self.setPeriod(norm_yMin, norm_yMax)
+		yMin,yMax,i1,i2 = self._setPeriod(norm_yMin, norm_yMax)
 		gdat=[[y,list(v.filled(-999.99))] for y,v in zip(self.yList,self.anomal(norm_yMin, norm_yMax))]
 		meta=dict(self.meta)
 		meta['comment']="converted to anomalys from norm %i - %i"%(yMin,yMax)
@@ -672,9 +686,9 @@ class cliData:
 
 	def calcTask(self,task):
 		"""
-		Обсчитывает принятое задание
-		сохраняет словарь результатов в self.res
-		{индекс станции: {уникальное имя функции: результат расчёта},...}
+		for automation and multithreading
+		@param task: {'taskName':{'fn':cliDataMethodName, 'param':parameters, 'converter':lambda}, ...}
+		@return: {'taskName':value, ...}
 		"""
 		priorTasks = [v for v in task if task[v]['fn'] in ['setSeasons']]
 		res = dict()
@@ -703,6 +717,7 @@ class cliData:
 	@cache
 	def trendMatrix(self, minTrlen=20):
 		"""
+		every possible annual trend longer than minTrlen
 		Расчитывает матрицу зависимости велечины тренда от года начала тренда и его длинны
 		Возвращает три двумерные numPy массива x,y,z
 		"""
@@ -1073,12 +1088,5 @@ class prec_yearData(yearData):
 
 
 if __name__ == "__main__":
-	acd=cliData.load('test')
-	for y in acd:
-		print y.sumMoreThen(0,c='LT')
-	res=acd.anomal(1961,1990)
-	#raise noDataException(1960,1990)
-	#print acd.trend()
-	#{'summer':-0.542, 'winter':-29.51, 'year':-16.095}
-	#print acd.s_norm(1961,1964, {"year": range(1, 13), "summer": [6, 7, 8], "winter": [-1, 1, 2]})
+	pass
 
