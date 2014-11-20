@@ -5,6 +5,10 @@
 Использует абстрактные классы климатических данных описаные в модуле altCliData.
 Класс tempData представляет собой пример класса функций уникальных для данного элемента.
 Класс stData хранит метаинформацию о станции, а также классы данных по каждой метео величине.
+
+>>> from dataConnections import cmip5connection
+>>>	conn=cmip5connection(r'.\HadGEM-ES_pr_historical.nc')
+>>> cda=metaData({'dt':conn.dt}, dataConnection=conn)
 """
 __author__ = 'Vasily Kokorev'
 __email__ = 'vasilykokorev@gmail.com'
@@ -47,6 +51,14 @@ class metaData:
 	большинство ф-й возвращают self.stInds который содержит список обектов metaSt
 	"""
 	def __init__(self, meta, cfgObj=None, stList=None, dataConnection=None):
+		"""
+
+		@param meta:
+		@param cfgObj:
+		@param stList: create metaData instans from list of cliData instances
+		@param dataConnection: connection to 'database'; dataConnection instance
+		@return:
+		"""
 		self.__name__ = 'metaData'
 		self.dataConnection=dataConnection
 		self.clidatObjects=dict() if stList is None else {st.meta['ind']:st for st in stList}
@@ -347,19 +359,4 @@ class metaData:
 
 
 if __name__ == "__main__":
-	import numpy as np
-	from dataConnections import cmip5connection
-	conn=cmip5connection(r'D:\data\CMIP5\pr\historical\HadGEM-ES_pr_historical.nc')
-	cda=metaData({'dt':conn.dt}, dataConnection=conn)
 	pass
-
-	#st=cda[22641]
-	#print st.data.mask
-	#res=cda.setRegAvgData(yMin=1961,yMax=2012)
-	#print res
-
-
-##=====================        </Конец класса metaData>     ======================================##
-##/////////////////////////////////////////////////////////////////////////////////////////////##        
-##=======================    </конец Классов>    ===============================================##
-##/////////////////////////////////////////////////////////////////////////////////////////////##
