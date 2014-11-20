@@ -1,9 +1,7 @@
 # coding=utf-8
 """
 Collection of classes that allows one to load different data formats to altCli
-Every class should implement to functions
-	getAllMetaDict() - return dictionary of meta information for every station or point in dataset
-	getPoint(ind) - return cliData instanse of point with given index
+New class should be inherited from dataConnection class
 """
 __author__ = 'Vasily Kokorev'
 __email__ = 'vasilykokorev@gmail.com'
@@ -17,7 +15,31 @@ from netCDF4 import num2date
 import numpy as np
 from glob import glob
 
-class cmip5connection():
+
+class dataConnection():
+	"""
+	shows what methods dataConnection class should implement
+	"""
+	def __init__(self, dbPointer):
+		""" Should be overridden
+		@param dbPointer: file name, etc
+		@return:
+		"""
+		self.cliSetMeta=None #dict()
+		raise NotImplementedError, "dataConnection.__init__() must be implemented"
+
+	def getAllMetaDict(self):
+		"""	Should be overridden
+		return dictionary of meta information for every station or point in dataset	"""
+		raise NotImplementedError, "dataConnection.getAllMetaDict() must be implemented"
+
+	def getPoint(self, ind):
+		""" Should be overridden
+		return cliData instanse of point with given index """
+		raise NotImplementedError, "dataConnection.getPoint(ind) must be implemented"
+
+
+class cmip5connection(dataConnection):
 	"""
 	allow one to use original CMIP5 data in netCDF format
 	"""
@@ -206,7 +228,7 @@ class cmip5connection():
 
 
 
-class cliGisConnection():
+class cliGisConnection(dataConnection):
 	"""
 	climate data format for State Hydrological Institute
 	"""
@@ -248,7 +270,7 @@ class cliGisConnection():
 		return self.meta
 
 
-class GRDCConnection():
+class GRDCConnection(dataConnection):
 	"""
 	GRDC river runoff ascii format
 	"""
