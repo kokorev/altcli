@@ -16,11 +16,10 @@ def rh2vpd(f,T):
 
 	@param f: relative humidity, %
 	@param T: temperature, deg. C
-	@return: VPD - Vapour Pressure Deficit, mbar
+	@return: VPD - Vapour Pressure Deficit, гПа
 	"""
 	if f>1:f=f/100.
-	if T<100: T=T+273.15
-	VPsat=math.e**(-0.000188/T + -13.1 + -0.015*T + 8*10**-7*T**2 + -1.69*10**-11*T**3 + 6.456*math.log(T))
+	VPsat=6.11*10**(7.5*T/(273.15+T))
 	VPair=VPsat*f
-	VPD=VPsat - VPair # Vapour Pressure Deficit, kPa
-	return VPD*10 # mbar
+	VPD=VPsat - VPair # Vapour Pressure Deficit, гПа
+	return VPD
