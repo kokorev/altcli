@@ -18,6 +18,7 @@
 Сохранить проект (лямбды не сохраняются, поэтому пересчитать задание после загрузки проекта не получится)
 >>> me.save()
 """
+import dill
 import pickle
 import shutil
 import os
@@ -29,6 +30,7 @@ from altCli import metaData
 from altCli import cliData
 from altCli.geocalc import shpFile2shpobj
 from altCli import cc
+from altCli.common import timeit
 
 logging.basicConfig(format = u'%(filename)s[LINE:%(lineno)d]# %(levelname)-8s [%(asctime)s]  %(message)s', level = logging.DEBUG)
 
@@ -41,16 +43,18 @@ class Model(object):
 		а остальные данные из словаря переносятся в self.meta
 		"""
 		if type(source) is str:
-			cdo, conn = self.getCDO(source)
-			self.meta = conn.cliSetMeta
 			self.source = source
-			self.meta['source'] = self.source
-			self.cdo = cdo
-			self.conn = conn
 		elif type(source) is dict:
 			assert 'source' in source, "initializing dictionary should have 'source' key in it"
-			self.meta = source
-			self.source = self.meta['source']
+			self.source = source['source']
+		self.fullyInit=False
+
+	def __late_init__(self):
+		cdo, conn = self.getCDO(self.source)
+		self.cdo = cdo
+		self.conn = conn
+		self.meta = conn.cliSetMeta
+		self.fullyInit=True
 
 	@staticmethod
 	def getCDO(source):
@@ -64,6 +68,7 @@ class Model(object):
 		return cdo, conn
 
 	def __getitem__(self, key):
+		if not self.fullyInit: self.__late_init__()
 		if key in self.meta:
 			result = self.meta[key]
 		elif key == 'cdo':
@@ -75,7 +80,12 @@ class Model(object):
 		return result
 
 	def save(self):
-		return self.meta
+		if self.fullyInit:
+			res=self.meta
+		else:
+			res={'source':self.source}
+		return res
+
 
 	@staticmethod
 	def load(saved):
@@ -98,14 +108,7 @@ class ModelsEvaluation(object):
 		self.homesrc = os.path.abspath(head)+'\\'
 		self.dt = dt
 		self.scenario='historical'
-		try:
-			ModelsEvaluation.load(project)
-		except IOError:
-			pass
-			# self.createFoldersTree()
-		else:
-			raise ValueError, "project with this name already exist in this dir"
-
+		self.createFoldersTree()
 		self.regions = dict()
 		self.models = dict()
 		self.regionMeanData = dict()
@@ -115,15 +118,19 @@ class ModelsEvaluation(object):
 		self.obsResults=dict()
 
 
+
 	def createFoldersTree(self):
-		os.makedirs(self.homesrc+'data\\models\\'+self.dt+'\\%s'%self.scenario)
-		os.makedirs(self.homesrc+'data\\obs\\'+self.dt)
-		os.makedirs(self.homesrc+'regshp')
-		os.makedirs(self.homesrc+'results\\'+self.dt)
+		for src in ['data\\models\\'+self.dt+'\\%s'%self.scenario, 'data\\obs\\'+self.dt, 'regshp','results\\'+self.dt]:
+			try:
+				os.makedirs(self.homesrc+src)
+			except WindowsError:
+				continue
+
 
 	@property
 	def cliDataObjList(self):
-		return [[self.getRegionMean(reg, mod),reg,mod] for mod in self.models for reg in self.regions]
+		return [[self.getModelRegionMean(reg, mod),reg,mod] for mod in self.models for reg in self.regions]
+
 
 	def addRegion(self, name, shpFl):
 		""" Добавление региона в проект
@@ -160,10 +167,22 @@ class ModelsEvaluation(object):
 			self.regionMeanData[name] = dict()
 		self.updateRegionalMeans()
 
-	def addModel(self, source):
-		mo = Model(source)
-		self.models[mo['modelId']] = mo
-		self.updateRegionalMeans()
+
+	def addModels(self, source):
+		if type(source) is str:
+			source=os.path.normpath(source)
+			if os.path.isdir(source):
+				modelsLst=glob.glob(source+'\*.nc')
+			else:
+				modelsLst=[source]
+			for ms in modelsLst:
+				mo = Model(ms)
+				self.models[mo['modelId']] = mo
+			self.updateRegionalMeans()
+		elif hasattr(source, '__iter__'):
+			for el in source:
+				self.addModels(el)
+
 
 	def addTask(self,task):
 		"""
@@ -173,6 +192,22 @@ class ModelsEvaluation(object):
 		"""
 		assert type(task) is dict
 		self.tasks.update(task)
+
+	def setObsData(self, inpt):
+		"""
+
+		@param inpt:
+		@return:
+		"""
+		if type(inpt) is str:
+			try:
+				self.obsDataSet=metaData.load(inpt)
+			except:
+				pass
+		else:
+			self.obsDataSet=inpt
+
+
 
 	def calcRegionalMean(self, reg, mod, replace=False):
 		assert reg in self.regions, "Region have not been added"
@@ -213,7 +248,8 @@ class ModelsEvaluation(object):
 		if type(reg) is not str: reg=str(reg)
 		return self.homesrc+r"data\obs\%s\%s.acd"%(self.dt, reg)
 
-	def getRegionMean(self, reg, mod):
+
+	def getModelRegionMean(self, reg, mod):
 		"""
 		Получает среднерегиональный ряд для конкретной модели.
 		Проверяет нет ли нужного объекта в словаре или в файле, если нет, то рассчитывает
@@ -231,6 +267,7 @@ class ModelsEvaluation(object):
 			except IOError:
 				cdo = self.calcRegionalMean(reg, mod)
 		return cdo
+
 
 	def getObsRegionMean(self, reg):
 		"""
@@ -250,6 +287,7 @@ class ModelsEvaluation(object):
 				cdo = self.calcObsRegMean(reg)
 		return cdo
 
+
 	def getTaskResult(self,reg,mod,taskId):
 		"""
 		Возвращает результат расчёта одного задания для конкретного ряда. Кэширующая.
@@ -258,15 +296,17 @@ class ModelsEvaluation(object):
 		:param taskId:
 		:return:
 		"""
-		cdo=self.getRegionMean(reg,mod)
+		cdo=self.getModelRegionMean(reg,mod)
 		try:
 			ans=cdo.res[taskId]
 		except KeyError:
 			ans=cdo.calcTask(self.tasks[taskId])
 		return ans
 
+
 	def getResultsObj(self):
 		return Results(self)
+
 
 	def calcAllTasks(self):
 		modRes= dict([(reg, dict()) for reg in self.regions])
@@ -294,34 +334,38 @@ class ModelsEvaluation(object):
 					cdo=self.calcRegionalMean(reg,mod,replace=True)
 					self.regionMeanData[reg][mod] = cdo
 				else:
-					self.getRegionMean(reg, mod)
-
+					self.getModelRegionMean(reg, mod)
 			if reCalcAll and self.obsDataSet is not None:
 				cdo=self.calcObsRegMean(reg,replace=True)
 				self.obsMeanData[reg]=cdo
 			else:
 				self.getObsRegionMean(reg)
 
-	def save(self,fn='project'):
+	def save(self,fn=None):
+		fn=self.projectName if fn is None else fn
 		modelsSaveDict = {mn:mo.save() for mn, mo in self.models.items()}
 		regionsSaveDict = self.regions
-		saveDict = {'models': modelsSaveDict, 'regions': regionsSaveDict, 'tasks':self.tasks, 'homesrc': self.homesrc, 'dt':self.dt}
-		sd=copy.deepcopy(saveDict)
-		for k in sd['tasks']:
-			sd['tasks'][k]['converter']=None
-		pickle.dump(sd, open(fn, 'w'))
+		saveDict = {'models': modelsSaveDict, 'regions': regionsSaveDict, 'tasks':self.tasks, 'homesrc': self.homesrc, 'dt':self.dt, }
+		pickle.dump(saveDict, open(fn, 'w'))
 		for cdo,reg,mod in self.cliDataObjList:
 			cdo.save(self.getModelDataSrc(reg,mod),replace=True, results=False)
 
 	@staticmethod
-	def load(fn='project'):
+	@timeit
+	def load(fn):
+		fn=os.path.abspath(fn)
+		head, tail=os.path.split(fn)
 		sd = pickle.load(open(fn,'r'))
-		loaded = ModelsEvaluation()
-		loaded.models = sd['models']
+		loaded = ModelsEvaluation(tail, sd['dt'])
+		loaded.models = {k:Model(v) for k,v in sd['models'].items()}
 		loaded.regions = sd['regions']
+		loaded.obsMeanData=dict()
+		for reg in sd['regions']:
+			loaded.regionMeanData[reg]=dict()
 		loaded.homesrc = sd['homesrc']
 		loaded.tasks = sd['tasks']
 		loaded.dt=sd['dt']
+		loaded.updateRegionalMeans()
 		return loaded
 
 
@@ -339,9 +383,26 @@ class Results(object):
 		self.regions.sort()
 		self.models=list(self.modr[self.regions[0]].keys())
 		self.models.sort()
+		self.rankFunction=lambda m,o: (m-o)/float((m+o))
+		self.rankSumFunction=lambda val: cc.avg([abs(v) if v is not None else None for v in val],2)
+		self.mr=dict() # modelsRanks
+
 
 	def listtable2txt(self, table):
 		return '\n'.join([';'.join([str(v) for v in ln]) for ln in table])
+
+
+	def calcRanks(self,taskName):
+		if taskName not in self.mr:
+			self.mr[taskName]=dict()
+			self.mr[taskName]['reg']=dict()
+			self.mr[taskName]['total']=dict()
+			rf=self.rankFunction
+			for m in self.models:
+				rs={r:rf(self.modr[r][m][taskName],self.obsr[r][taskName]) if self.modr[r][m] is not None and self.obsr[r] is not None else None for r in self.regions}
+				self.mr[taskName]['reg'][m]=rs
+				self.mr[taskName]['total'][m]=self.rankSumFunction(rs.values())
+
 
 	def getParametrTable(self,taskName, converter=lambda a: round(a,2) if a is not None else None):
 		head=['model']+self.regions
@@ -354,19 +415,30 @@ class Results(object):
 		with open(self.parent.homesrc+'results\\%s\\%s_values.csv'%(self.dt,taskName),'w') as f: f.write(txt)
 		return txt
 
+
 	def getParametrRank(self,taskName):
-		rankFunction=lambda m,o: (m-o)/float((m+o))
-		rankSumFunction=lambda val: cc.avg([abs(v) for v in val],2)
+		self.calcRanks(taskName)
 		table=list()
 		for m in self.models:
-			# if self.modr[r][m] is None: continue
-			# if self.obsr[r] is None: continue
-			rs=[rankFunction(self.modr[r][m][taskName],self.obsr[r][taskName]) if self.modr[r][m] is not None and self.obsr[r] is not None else None for r in self.regions]
-			table.append([m, rankSumFunction(rs)])
+			table.append([m, self.mr[taskName]['total'][m]])
 		table.sort(key=lambda a:a[1])
 		txt=self.listtable2txt(table)
 		with open(self.parent.homesrc+'results\\%s\\%s_ranks.csv'%(self.dt,taskName),'w') as f: f.write(txt)
 		return txt
+
+
+	def getTotalRank(self,tasksList):
+		table=list()
+		for t in tasksList:
+			self.calcRanks(t)
+		for m in self.models:
+			v=self.rankSumFunction([self.mr[t]['total'][m] for t in tasksList])
+			table.append([m,v])
+		table.sort(key=lambda a:a[1])
+		txt=self.listtable2txt(table)
+		with open(self.parent.homesrc+'results\\%s\\TotalRank_%s_ranks.csv'%(self.dt,str(tasksList)),'w') as f: f.write(txt)
+
+
 
 
 # старый класс сравнения моделей
@@ -377,6 +449,7 @@ class modelSet():
 	Класс набора моделей, реалезующий ф-ии сравнения моделей и построения ансамблей
 	"""
 	def __init__(self,dt):
+		raise DeprecationWarning, "this class was replaced by following classes - ModelsEvaluation, Model, Results"
 		self.models=dict()
 		self.dt={'dt':dt}
 		self.regionsDict=dict()
