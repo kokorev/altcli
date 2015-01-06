@@ -44,6 +44,7 @@ class cmip5connection(dataConnection):
 	allow one to use original CMIP5 data in netCDF format
 	"""
 	def __init__(self, fn, convert=True):
+		fn=os.path.abspath(fn)
 		self.f=nc.Dataset(fn)
 		if self.f.project_id!='CMIP5':
 			print 'projet_id is "%s" not "CMIP5"'%self.f.project_id
@@ -93,7 +94,7 @@ class cmip5connection(dataConnection):
 		self.startYear = int(self.startDate.year)
 		self.startMonth = int(self.startDate.month)
 		self.warningShown = False
-		self.cliSetMeta = {'modelId':self.f.model_id, 'calendar':self.f.variables['time'].calendar, 'source':'CMIP5 nc file',
+		self.cliSetMeta = {'modelId':self.f.model_id, 'calendar':self.f.variables['time'].calendar, 'source':fn,
 						   'scenario':self.f.experiment_id, 'dt':self.dt}
 
 
