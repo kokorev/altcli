@@ -383,7 +383,7 @@ class Results(object):
 		self.regions.sort()
 		self.models=list(self.modr[self.regions[0]].keys())
 		self.models.sort()
-		self.rankFunction=lambda m,o: (m-o)/float((m+o))
+		self.rankFunction=lambda m,o: (m-o)/float((m+o)) if (m is not None) and (o is not None) else None
 		self.rankSumFunction=lambda val: cc.avg([abs(v) if v is not None else None for v in val],2)
 		self.mr=dict() # modelsRanks
 
@@ -412,7 +412,7 @@ class Results(object):
 			line=[m]+[converter(self.modr[r][m][taskName]) if self.modr[r][m] is not None else 'None' for r in self.regions]
 			arr.append(line)
 		txt=self.listtable2txt(arr)
-		with open(self.parent.homesrc+'results\\%s\\%s_values.csv'%(self.dt,taskName),'w') as f: f.write(txt)
+		with open(self.parent.homesrc+'results\\%s\\%s_%s_values.csv'%(self.dt,self.parent.projectName,taskName),'w') as f: f.write(txt)
 		return txt
 
 
@@ -423,7 +423,7 @@ class Results(object):
 			table.append([m, self.mr[taskName]['total'][m]])
 		table.sort(key=lambda a:a[1])
 		txt=self.listtable2txt(table)
-		with open(self.parent.homesrc+'results\\%s\\%s_ranks.csv'%(self.dt,taskName),'w') as f: f.write(txt)
+		with open(self.parent.homesrc+'results\\%s\\%s_%s_ranks.csv'%(self.dt,self.parent.projectName,taskName),'w') as f: f.write(txt)
 		return txt
 
 
@@ -436,7 +436,7 @@ class Results(object):
 			table.append([m,v])
 		table.sort(key=lambda a:a[1])
 		txt=self.listtable2txt(table)
-		with open(self.parent.homesrc+'results\\%s\\TotalRank_%s_ranks.csv'%(self.dt,str(tasksList)),'w') as f: f.write(txt)
+		with open(self.parent.homesrc+'results\\%s\\TotalRank_%s_%s_ranks.csv'%(self.dt,self.parent.projectName,str(tasksList)),'w') as f: f.write(txt)
 
 
 
