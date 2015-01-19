@@ -45,7 +45,10 @@ class cmip5connection(dataConnection):
 	"""
 	def __init__(self, fn, convert=True):
 		fn=os.path.abspath(fn)
-		self.f=nc.Dataset(fn)
+		try:
+			self.f=nc.Dataset(fn)
+		except RuntimeError:
+			raise IOError, "no such file or dir %s"%fn
 		if self.f.project_id!='CMIP5':
 			print 'projet_id is "%s" not "CMIP5"'%self.f.project_id
 		# определяем основную переменную в массиве, это так которая зависит от трёх других
