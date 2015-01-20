@@ -3,6 +3,15 @@
 Общие функции геометрии и картографии
 """
 #from voronoi import *
+import shapefile as shp
+from shapely.geometry import Polygon,Point
+import math
+from voronoi import voronoi_poly
+from shapely.geometry import Point
+from clidataSet import metaData
+import shapely.geos
+import numpy as np
+
 
 def cLon(lon):
 	""" Convert longitude to 181+ format """
@@ -16,7 +25,6 @@ def calcDist(lat1, lon1, lat2, lon2):
 	ф-я расчёта растояния и азиматульного угла между двумя точками по их гео координатам
 	растояние считаетсья в метрах, результат округляеться до целых метров ф-ей int()
 	"""
-	import math
 	if lat1==lat2 and lon1==lon2: return 0,0
 	rad = 6372795. # радиус сферы (Земли)
 	#косинусы и синусы широт и разницы долгот
@@ -75,8 +83,6 @@ def shpFile2shpobj(fn):
 	В настоящий момент пытается считать всё в полигоны
 	"""
 	#TODO: Сделать проверку на тип информации в файле (полигон, линия, точки) и читать каждый тип в правлиьный объект
-	import shapefile as shp
-	from shapely.geometry import Polygon
 	sf = shp.Reader(fn)
 	if len(sf.shapes())>1:
 		res=[]
@@ -99,8 +105,6 @@ def setStInShape(meta,shpfile):
 	"""
 	Функция возвращает список станций попадающий в полигон(ы) из шэйпфайла файла
 	"""
-	import shapefile as shp
-	from shapely.geometry import Polygon,Point
 	res=[]
 	sf = shp.Reader(shpfile)
 	for sp in sf.shapes():
@@ -127,10 +131,6 @@ def voronoi(cdl,maskPoly,showMap=False):
 	Возвращает словарь {индекс станции: Полигон shapely}
 	Если у станции нету полигона внутри задоного контура, будет стоять None
 	"""
-	from voronoi import voronoi_poly
-	from shapely.geometry import Point
-	from clidataSet import metaData
-	import shapely.geos
 	pl=dict()
 	if type(cdl)==dict:
 		pl=cdl
@@ -190,7 +190,6 @@ class distanceMatrix(object):
 	Класс для оптимизации нахождения X ближайших станций к заданой из заданного списка
 	"""
 	def __init__(self, meta1, meta2=None):
-		import numpy as np
 		def metaConverter(m):
 			if type(m) is list:
 				if type(m[0]) is dict:
