@@ -8,7 +8,6 @@ from shapely.geometry import Polygon,Point
 import math
 from voronoi import voronoi_poly
 from shapely.geometry import Point
-from clidataSet import metaData
 import shapely.geos
 import numpy as np
 
