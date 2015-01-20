@@ -132,11 +132,10 @@ class ModelsEvaluation(object):
 		self.obsResults=dict()
 
 
-
 	def createFoldersTree(self):
 		""" создать необходимые папки под проект
 		"""
-		for src in ['data\\models\\'+self.dt+'\\%s'%self.scenario, 'data\\obs\\'+self.dt, 'regshp','results\\'+self.dt]:
+		for src in [r'\data\models\%s\%s'%(self.dt,self.scenario), r'\data\obs\%s'%self.dt, r'\regshp',r'\results\%s'%self.dt]:
 			try:
 				os.makedirs(self.homesrc+src)
 			except WindowsError:
@@ -372,7 +371,8 @@ class ModelsEvaluation(object):
 		modelsSaveDict = {mn:mo.save() for mn, mo in self.models.items()}
 		regionsSaveDict = self.regions
 		saveDict = {'models': modelsSaveDict, 'regions': regionsSaveDict, 'tasks':self.tasks, 'homesrc': self.homesrc, 'dt':self.dt, }
-		pickle.dump(saveDict, open(fn, 'w'))
+		print fn,self.homesrc
+		pickle.dump(saveDict, open(self.homesrc + fn, 'w'))
 		for cdo,reg,mod in self.cliDataObjList:
 			cdo.save(self.getModelDataSrc(reg,mod),replace=True, results=False)
 
