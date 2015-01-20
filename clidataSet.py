@@ -287,7 +287,10 @@ class metaData:
 			allDat=[]
 			for ind in self.stInds:
 				#vals=list(self[ind][year].data.data)
-				vals=list(self[ind].data[self[ind].timeInds[year]])
+				if year in self[ind].timeInds:
+					vals=list(self[ind].data[self[ind].timeInds[year]])
+				else:
+					vals=[-999.99]*12
 				allDat.append(vals)
 			dat=np.ma.masked_values(allDat, -999.99, copy=True)
 			ws=[weight[ind] for ind in self.stInds] if weight is not None else None
