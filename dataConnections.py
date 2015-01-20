@@ -14,6 +14,7 @@ import netCDF4 as nc
 from netCDF4 import num2date
 import numpy as np
 from glob import glob
+import itertools
 
 
 class dataConnection():
@@ -61,6 +62,7 @@ class cmip5connection(dataConnection):
 		if self.dt=='tas' and convert is True:
 			from tempConvert import kelvin2celsius
 			self.convertValue=lambda val,year,month: kelvin2celsius(val)
+			self.convertArray=lambda arr: np.subtract(arr,273.15)
 		elif self.dt=='pr' and convert is True:
 			if self.f.frequency=='day':
 				from precConvert import si2mmPerDay
@@ -68,8 +70,10 @@ class cmip5connection(dataConnection):
 			elif self.f.frequency=='mon':
 				from precConvert import si2mmPerMonth
 				self.convertValue=si2mmPerMonth
+				self.convertArray=np.vectorize(lambda val: val*86400*30.5, otypes=[np.float])
 		else:
 			self.convertValue=lambda val,year,month: val
+			self.convertArray=lambda arr: arr
 #			print "Warning! There is no converter for data type = '%s'"%self.dt
 		self.var=self.f.variables[self.dt]
 		self.lat=self.f.variables['lat']
@@ -107,20 +111,19 @@ class cmip5connection(dataConnection):
 		item could be either point index or (latIndex, lonIndex) but not (lat, lon). Use self.latlon2latIndlonInd()
 		"""
 		try:
-			try:
-				latInd, lonInd = item
-				if self.warningShown==False:
-					print 'Warning! (lat, lon) is no more a valid argument. Please check your code and'
-					print 'use latlon2latIndlonInd or closestDot function to get coordinate indexes'
-					self.warningShown = True
-			except TypeError:
-				latInd, lonInd = self.ind2latindlonind(item)
+			latInd, lonInd = item
+			if self.warningShown==False:
+				print 'Warning! (lat, lon) is no more a valid argument. Please check your code and'
+				print 'use latlon2latIndlonInd or closestDot function to get coordinate indexes'
+				self.warningShown = True
+		except TypeError:
+			latInd, lonInd = self.ind2latindlonind(item)
 		except:
 			print self.f.model_id, item
 			raise
 		meta={'ind':self.latlonInd2ind(latInd, lonInd), 'lat':self.latvals[latInd], 'lon':self.lonvals[lonInd],
 			  'dt':self.dt, 'modelId':self.f.model_id}
-		vals=list(self.var[:,latInd,lonInd])
+		vals=self.var[:,latInd,lonInd]
 		gdat=[]
 		if self.startMonth!=1:
 			# весь огород ниже из-за моделей которые начинают год не с января
@@ -136,10 +139,10 @@ class cmip5connection(dataConnection):
 		else:
 			for yn,i in enumerate(range(0,len(vals),12)):
 				tyear=self.startYear+yn
-				lineVals=[self.convertValue(v, year=tyear, month=mn+1) for mn,v in enumerate(vals[i:i+12])]
+				lineVals=vals[i:i+12]
 				if len(lineVals)==12:
 					#TODO: сделать нормальное заполнение пропусками, У некоторыйх модлей (EC_EARTH) в последнем году расчёта только 11 месяцев, пропускаем такие года
-					gdat.append([tyear, lineVals])
+					gdat.append([tyear, self.convertArray(lineVals)])
 		return createCliDat(meta=meta, gdat=gdat)
 
 
@@ -180,10 +183,10 @@ class cmip5connection(dataConnection):
 		Возвращает словарь метаданных для всех узлов сетки
 		"""
 		res=dict()
-		for latInd,lat in enumerate(self.latvals):
-			for lonInd,lon in enumerate(self.lonvals):
-				ind=self.latlonInd2ind(latInd, lonInd)
-				res[ind]={'ind':ind, 'lat':lat, 'lon':lon, 'dt':self.dt, 'modelId':self.f.model_id}
+		ind=0
+		for lat,lon in itertools.product(self.latvals,self.lonvals):
+			res[ind]={'ind':ind, 'lat':lat, 'lon':lon, 'dt':self.dt, 'modelId':self.f.model_id}
+			ind+=1
 		return res
 
 

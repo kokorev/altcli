@@ -16,6 +16,7 @@ __email__ = 'vasilykokorev@gmail.com'
 from clidata import *
 from geocalc import calcDist
 from common import timeit
+cfg=config()
 
 
 class tempData(cliData):
@@ -30,16 +31,12 @@ class tempData(cliData):
 		return res,time
 
 
-def createCliDat(meta, gdat=None, cfg=None, fillValue=None):
-	if cfg == None:
-		cfg = config()
-		cfg.get = None # Зануляем ф-ю загрузки новых данных
-		cfg.getMeta = None # И ф-ю загрузки метаданных
+def createCliDat(meta, gdat=None, fillValue=None):
 	dt = cfg.elSynom[meta['dt']]
 	if dt == 'temp':
-		dataObj = tempData(meta, gdat, cfg, fillValue=fillValue)
+		dataObj = tempData(meta, gdat, fillValue=fillValue)
 	else:
-		dataObj = cliData(meta, gdat, cfg, fillValue=fillValue)
+		dataObj = cliData(meta, gdat, fillValue=fillValue)
 	return dataObj
 
 
@@ -50,11 +47,10 @@ class metaData:
 	реализует различные ф-ии выборки метеостанций - по гео. положению, по длинне рядов и т.п.
 	большинство ф-й возвращают self.stInds который содержит список обектов metaSt
 	"""
-	def __init__(self, meta, cfgObj=None, stList=None, dataConnection=None):
+	def __init__(self, meta, stList=None, dataConnection=None):
 		"""
 
 		@param meta:
-		@param cfgObj:
 		@param stList: create metaData instans from list of cliData instances
 		@param dataConnection: connection to 'database'; dataConnection instance
 		@return:
@@ -74,7 +70,7 @@ class metaData:
 		else:
 			self.stInds=[st.meta['ind'] for st in stList]
 
-		self.cfg = config() if cfgObj is None else cfgObj
+		self.cfg = cfg
 		try:
 			meta['dt'] = self.cfg.elSynom[meta['dt']]
 		except KeyError:
@@ -290,7 +286,8 @@ class metaData:
 		for year in range(yMin,yMax+1):
 			allDat=[]
 			for ind in self.stInds:
-				vals=list(self[ind][year].data.data)
+				#vals=list(self[ind][year].data.data)
+				vals=list(self[ind].data[self[ind].timeInds[year]])
 				allDat.append(vals)
 			dat=np.ma.masked_values(allDat, -999.99, copy=True)
 			ws=[weight[ind] for ind in self.stInds] if weight is not None else None

@@ -12,6 +12,12 @@ from scipy import stats
 from math import isnan
 import os
 import functools
+import logging
+import copy
+
+cfg=config()
+logging.basicConfig(format = u'%(filename)s[LINE:%(lineno)d]# %(levelname)-8s [%(asctime)s]  %(message)s', level = logging.DEBUG)
+
 
 def timeit(method):
 	def timed(*args, **kw):
@@ -104,7 +110,7 @@ class cliData:
 	"""
 	Custom data type for monthly climate data in a point
 	"""
-	def __init__(self, meta, gdat, cfg=None, fillValue=None):
+	def __init__(self, meta, gdat, fillValue=None):
 		"""
 		meta - basic metadata dictionary, should contain at least 'dt' and 'ind' keys for climate parameter and station index
 		'ind' could be None for region mean data etc
@@ -116,11 +122,11 @@ class cliData:
 		cfg=config() - exist mostly for backwards compatibility reasons
 		"""
 		#todo: принимать numpy array в качестве gdat
-		if cfg == None: cfg = config()
-		self.cfg = cfg
+		# if cfg == None: cfg = config()
+		# self.cfg = cfg
 		self.__name__ = 'cliData'
 		self.res = dict()
-		self.setSeasons = self.cfg.setSeasons
+		# self.setSeasons = self.cfg.setSeasons
 		self.yearObjects=dict()
 		self.precision=2
 		self.seasonsCache=dict()
@@ -136,7 +142,7 @@ class cliData:
 			pass
 		self.meta = meta
 		self.filledValue=-999.99 if fillValue is None else fillValue
-		d=[ln for ln in gdat if ln[1].count(fillValue)<12]
+		d=[ln for ln in gdat if not np.all(np.equal(ln[1], fillValue))]
 		try:
 			self.data=np.ma.masked_values([strdat[1] for strdat in d], fillValue)
 			#self.noGaps=False
@@ -182,7 +188,7 @@ class cliData:
 			dat=self.data[i1:i2+1].copy()
 			yList=self.yList[i1:i2+1]
 			gdat=[[y,list(dat[i].data)] for i,y in enumerate(yList)]
-			cdo=cliData(dict(self.meta), gdat, cfg=self.cfg, fillValue=self.filledValue)
+			cdo=cliData(dict(self.meta), gdat, fillValue=self.filledValue) #cfg=self.cfg,
 			return cdo
 		else:
 			if item in self.timeInds:
@@ -192,7 +198,7 @@ class cliData:
 					val=createYearDataObj(self,item)
 					self.yearObjects[item]=val
 			else:
-				self.cfg.logThis("нет данных для года " + str(item) + " на станции" + str(self.meta['ind']))
+				logging.warning("нет данных для года " + str(item) + " на станции" + str(self.meta['ind']))
 				val=createYearDataObj(self,item)
 				self.yearObjects[item]=val
 		return val
@@ -378,7 +384,7 @@ class cliData:
 	def getSeasonsData(self,seasons):
 		"""
 		@param seasons: {'seasonName':[monthNumber1, monthNumber2, ...], 'seasonName2'}
-		monthNumber [-inf,0), (0,+inf]
+		monthNumber [-12,0), (0,+24]
 		monthNumber=1 January
 		monthNumber=12 December
 		monthNumber=-1 December, year-1
@@ -442,10 +448,10 @@ class cliData:
 		for m in mlist:
 			if 1<=m<=12:
 				seasIndList.append([0,m-1])
-			elif m>12:
+			elif 12<m<=24:
 				seasIndList.append([1,m-12-1])
 				if iStop==len(self.data): iStop-=1
-			elif m<0:
+			elif -12<=m<0:
 				seasIndList.append([-1,12+m])
 				if iStart==0: iStart+=1
 			else:
@@ -760,7 +766,6 @@ class yearData:
 	и могут вызываться как свойства
 	"""
 	def __init__(self, year, parent):
-		import copy
 		self.__name__ = 'yearData'
 		self.year = year
 		self.parent = parent
@@ -856,7 +861,7 @@ class yearData:
 
 
 	def getMonthVal(self, year, month):
-		return self.cfg.get(self.parent.meta['dt'], self.parent.meta['ind'], year, month)
+		return self.parent[year][month]
 
 
 	@property

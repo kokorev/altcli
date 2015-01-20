@@ -9,6 +9,8 @@
 >>> me.addModel(r'E:\data\cmip5\data\tas\historical\CanESM2_historical.nc')
 Добавляем задание расчёта
 >>> me.addTask({'trend70-99': {'fn': 'trend', 'param': [1970, 1999], 'converter': lambda a: round(a[0] * 100, 2)}})
+>>> me.addTask({'ddt70-99': {'fn': 'trendParam', 'param': ['conditionalSum',[0], 1970, 1999, lambda a: a[0], 3], 'converter':lambda a: a[0]*100}})
+>>> me.addTask({'winterTrend':{'fn': 's_trend', 'param': [1970, 1999, {'w':[-1,1,2]}, 3], 'converter':lambda a: a['w'][0]*100}})
 Расчтиать задание по добавленым моделям
 >>> ro=me.getResultsObj()
 Вывести результаты сравнения модели в виде таблицы, также записывается в *.csv файл
@@ -23,7 +25,6 @@ import pickle
 import shutil
 import os
 import logging
-import copy
 import glob
 from altCli.dataConnections import cmip5connection as c5c
 from altCli import metaData
@@ -36,6 +37,11 @@ logging.basicConfig(format = u'%(filename)s[LINE:%(lineno)d]# %(levelname)-8s [%
 
 
 class Model(object):
+	"""
+
+	@param source:
+	"""
+
 	def __init__(self, source):
 		"""
 		если source - строка указывающая файл с данными cmip5 то при инициализации создаётся объект metaData
@@ -58,6 +64,11 @@ class Model(object):
 
 	@staticmethod
 	def getCDO(source):
+		"""
+
+		@param source:
+		@return: @raise:
+		"""
 		try:
 			conn = c5c(source)
 		except:
@@ -120,6 +131,8 @@ class ModelsEvaluation(object):
 
 
 	def createFoldersTree(self):
+		""" создать необходимые папки под проект
+		"""
 		for src in ['data\\models\\'+self.dt+'\\%s'%self.scenario, 'data\\obs\\'+self.dt, 'regshp','results\\'+self.dt]:
 			try:
 				os.makedirs(self.homesrc+src)
@@ -154,6 +167,7 @@ class ModelsEvaluation(object):
 
 	def loadRegion(self,name):
 		""" Загрузку региона шэйп которого уже был добавлен в проект
+		@param name:
 		"""
 		assert name not in self.regions, "This region name have already exist"
 		shpFl='.\\regshp\\%s.shp'%name
@@ -169,6 +183,10 @@ class ModelsEvaluation(object):
 
 
 	def addModels(self, source):
+		"""
+
+		@param source:
+		"""
 		if type(source) is str:
 			source=os.path.normpath(source)
 			if os.path.isdir(source):
@@ -192,6 +210,7 @@ class ModelsEvaluation(object):
 		"""
 		assert type(task) is dict
 		self.tasks.update(task)
+
 
 	def setObsData(self, inpt):
 		"""
@@ -328,11 +347,15 @@ class ModelsEvaluation(object):
 		Расчитывает и записывает средние ряды для каждой модели и наблюдений для каждого региона
 		если они не были расчитаны ранее
 		"""
+		#self.regionMeanData[reg][mod]
 		for reg in self.regions:
+			isRegOld=reg in self.regionMeanData
 			for mod in self.models:
 				if reCalcAll:
 					cdo=self.calcRegionalMean(reg,mod,replace=True)
 					self.regionMeanData[reg][mod] = cdo
+				elif isRegOld:
+					if mod in self.regionMeanData[reg]: continue
 				else:
 					self.getModelRegionMean(reg, mod)
 			if reCalcAll and self.obsDataSet is not None:

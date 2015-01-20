@@ -2,13 +2,13 @@
 """
 Модуль конвертирующий значения осадков между системами измерений
 """
+import calendar
 
 def si2mmPerMonth(val,year=None,month=None):
 	"""
 	Конвертирует сумму осадков из системы си - кг/м^2 *c в месячные суммы в миллиметрах
 	если заданы год и месяц то используется релаьное количестве дней, если не заданы то 30.5
 	"""
-	import calendar
 	if year is not None and month is not None:
 		numD=calendar.monthrange(year, month)[1]
 	else:
