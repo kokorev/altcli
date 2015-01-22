@@ -26,7 +26,7 @@ class config:
 		self.src = os.path.split(dummy.__file__)[0]
 		self.readini(filename)
 		self.setLogs(self.logFileName)
-		self.makePythonRusFriendly()
+		# self.makePythonRusFriendly()
 #        self.c=self.connect()
 		self.setElList()
 		global cfg
