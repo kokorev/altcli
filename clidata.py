@@ -470,16 +470,20 @@ class cliData:
 		return sdatMasked
 
 
-	def getSeasonsSeries(self, seasons):
+	def getSeasonsSeries(self, seasons, maskMissing=None):
 		""" return mean season value for each year (sum if precip)
 		"""
 		dat=self.getSeasonsData(seasons)
 		res=dict()
 		for sn,d in dat.items():
+
 			if self.meta['dt']=='prec':
 				r=d.sum(axis=1)
 			else:
 				r=d.mean(axis=1)
+			if maskMissing is not None:
+				mask = (1 - d.count(axis=1) / float(len(seasons[sn]))) <= maskMissing # не менять знак, будет не верное поведение на на сравнение 0<=0.
+				r.mask = np.logical_or(r.mask, np.logical_not(mask))
 			res[sn]=r
 		return res
 
