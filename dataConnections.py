@@ -87,8 +87,7 @@ class cmip5connection(dataConnection):
 		else:
 			self.timeUnits=self.f.variables['time'].units
 		try:
-			self.startDate=nc.num2date(self.f.variables['time'][0], self.timeUnits,
-									   self.f.variables['time'].calendar)
+			self.startDate=nc.num2date(self.f.variables['time'][0], self.timeUnits, self.f.variables['time'].calendar)
 		except ValueError:
 			raise
 			print 'Warning! failed to parse date string -%s. Model id - %s. startDate set to 0850-1-1 assuming model is MPI'%(self.f.variables['time'].units,self.f.model_id)
@@ -347,6 +346,69 @@ class GRDCConnection(dataConnection):
 		return self.meta
 
 
+class CRUConnection(cmip5connection):
+	"""
+	"""
+	def __init__(self, fn):
+		fn=os.path.abspath(fn)
+		try:
+			self.f=nc.Dataset(fn)
+		except RuntimeError:
+			raise IOError, "no such file or dir %s"%fn
+		dtList=[v for v in self.f.variables if self.f.variables[v].ndim==3]
+		if len(dtList)>1:
+			tmpcfg = config()
+			dtList=[tmpDt for tmpDt in dtList if tmpDt in tmpcfg.elSynom]
+			if len(dtList)>1: raise TypeError, "Unknown data type in nc file"
+		self.dt=dtList[0]
+		self.var=self.f.variables[self.dt]
+		self.lat=self.f.variables['latitude']
+		self.latvals=[self.lat[l] for l in range(self.lat.size)]
+		self.lon=self.f.variables['longitude']
+		self.lonvals=[cLon(self.lon[l]) for l in range(self.lon.size)]
+		self.timeUnits=self.f.variables['time'].units
+		self.startDate=nc.num2date(self.f.variables['time'][0], self.timeUnits,self.f.variables['time'].calendar)
+		self.startYear = int(self.startDate.year)
+		self.startMonth = int(self.startDate.month)
+		self.cliSetMeta = {'calendar':self.f.variables['time'].calendar, 'source':fn,'dt':self.dt}
 
+	def getPoint(self, item):
+		"""
+		self[(latInd,lonInd)] возвращает объект cliData
+		item could be either point index or (latIndex, lonIndex) but not (lat, lon). Use self.latlon2latIndlonInd()
+		"""
+		try:
+			latInd, lonInd = item
+			if self.warningShown==False:
+				print 'Warning! (lat, lon) is no more a valid argument. Please check your code and'
+				print 'use latlon2latIndlonInd or closestDot function to get coordinate indexes'
+				self.warningShown = True
+		except TypeError:
+			latInd, lonInd = self.ind2latindlonind(item)
+		except:
+			print self.f.model_id, item
+			raise
+		meta={'ind':self.latlonInd2ind(latInd, lonInd), 'lat':self.latvals[latInd], 'lon':self.lonvals[lonInd],'dt':self.dt}
+		vals=self.var[:,latInd,lonInd]
+		gdat=[]
+		for yn,i in enumerate(range(0,len(vals),12)):
+			tyear=self.startYear+yn
+			lineVals=vals[i:i+12].filled(-999.)
+			if len(lineVals)==12:
+				gdat.append([tyear, lineVals])
+		try:
+			res=createCliDat(meta=meta, gdat=gdat,fillValue=-999.)
+		except ValueError:
+			res=None
+		return res
 
-
+	def getAllMetaDict(self):
+		"""
+		Возвращает словарь метаданных для всех узлов сетки
+		"""
+		res=dict()
+		ind=0
+		for lat,lon in itertools.product(self.latvals,self.lonvals):
+			res[ind]={'ind':ind, 'lat':lat, 'lon':lon, 'dt':self.dt, 'source':'CRU'}
+			ind+=1
+		return res
