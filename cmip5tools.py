@@ -60,7 +60,7 @@ class Model(object):
 
 
 	def __late_init__(self):
-		cdo, conn = self.getCDO(self.source)
+		cdo, conn = self.getCDO()
 		self.cdo = cdo
 		self.conn = conn
 		self.meta = conn.cliSetMeta
@@ -353,13 +353,10 @@ class ModelsEvaluation(object):
 		"""
 		#self.regionMeanData[reg][mod]
 		for reg in self.regions:
-			isRegOld=reg in self.regionMeanData
 			for mod in self.models:
 				if reCalcAll:
 					cdo=self.calcRegionalMean(reg,mod,replace=True)
 					self.regionMeanData[reg][mod] = cdo
-				elif isRegOld:
-					if mod in self.regionMeanData[reg]: continue
 				else:
 					self.getModelRegionMean(reg, mod)
 			if reCalcAll and self.obsDataSet is not None:
