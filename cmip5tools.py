@@ -26,7 +26,9 @@ import shutil
 import os
 import logging
 import glob
-from altCli.dataConnections import cmip5connection as c5c
+from altCli.dataConnections import cmip5connection
+from altCli.dataConnections import ncep2Connection
+from altCli.dataConnections import CRUTEMP4Connection
 from altCli import metaData
 from altCli import cliData
 from altCli.geocalc import shpFile2shpobj
@@ -42,18 +44,20 @@ class Model(object):
 	@param source:
 	"""
 
-	def __init__(self, source):
+	def __init__(self, sourceFile, sourceConn=cmip5connection):
 		"""
 		если source - строка указывающая файл с данными cmip5 то при инициализации создаётся объект metaData
 		если source словарь вида {'source':sourceSrc, } то объект metaData создаётся при первом обращении,
 		а остальные данные из словаря переносятся в self.meta
 		"""
-		if type(source) is str:
-			self.source = source
-		elif type(source) is dict:
-			assert 'source' in source, "initializing dictionary should have 'source' key in it"
-			self.source = source['source']
+		if type(sourceFile) is str:
+			self.source = sourceFile
+		elif type(sourceFile) is dict:
+			assert 'source' in sourceFile, "initializing dictionary should have 'source' key in it"
+			self.source = sourceFile['source']
+		self.connF=sourceConn
 		self.fullyInit=False
+
 
 	def __late_init__(self):
 		cdo, conn = self.getCDO(self.source)
@@ -62,17 +66,17 @@ class Model(object):
 		self.meta = conn.cliSetMeta
 		self.fullyInit=True
 
-	@staticmethod
-	def getCDO(source):
+
+	def getCDO(self):
 		"""
 
 		@param source:
 		@return: @raise:
 		"""
 		try:
-			conn = c5c(source)
+			conn = self.connF(self.source)
 		except:
-			logging.critical( 'Failed to load model %s' % source )
+			logging.critical( 'Failed to load %s' % self.source )
 			raise
 		else:
 			cdo = metaData(meta={'dt': conn.cliSetMeta['dt']}, dataConnection=conn)
@@ -486,7 +490,7 @@ class modelSet():
 		"""
 		scenariosList=list()
 		for fn in modList:
-			conn=c5c(fn,dt)
+			conn=cmip5connection(fn,dt)
 			self.models[conn.modelId]=clidat.metaData(meta={'dt':dt},dataConnection=conn)
 			scenariosList.append(self.models[conn.modelId].meta['scenario'])
 		if len(set(scenariosList))>1: raise StandardError, "different scenarios used in different files"
