@@ -28,7 +28,7 @@ def getRedBlueCM(segments=100,reverse=False):
 	return cm
 
 
-def interannualVariability(vals,time,trend=[None,None],fn=None,smoothing=None, xLim=[None,None], yLim=[None,None]):
+def interannualVariability(vals,time,trend=[None,None],fn=None,smoothing=None, xLim=[None,None], yLim=[None,None], colors=None):
 	"""
 	Строит график изменения величины со временем. Одна линия + тренд + скользящее среднее
 	Если vals, time двумерные массивы, то на одном рисунке будут проведены разные линии
@@ -58,12 +58,22 @@ def interannualVariability(vals,time,trend=[None,None],fn=None,smoothing=None, x
 		yMin,yMax=xLim[0] if xLim[0] else min(time), xLim[1] if xLim[1] else max(time)
 		time=[time]
 	allStat=[]
+	lineNumber=0
 	for thisTime,thisVals in zip(time,vals):
-		ax.plot(thisTime, thisVals, '-', color='#5ab3f8', linewidth=1.5, label='test', zorder=0)
+		mainColor='#5ab3f8'
+		avgLineColor='#fb2e2e'
+		trendLineColor='black'
+		if colors is not None:
+			if lineNumber in colors:
+				cs=colors[lineNumber]
+				if 'mainColor' in cs: mainColor = cs['mainColor'] if cs['mainColor'] is not None else mainColor
+				if 'avgLineColor' in cs: avgLineColor = cs['avgLineColor'] if cs['avgLineColor'] is not None else avgLineColor
+				if 'trendLineColor' in cs: trendLineColor = cs['trendLineColor'] if cs['trendLineColor'] is not None else trendLineColor
+		ax.plot(thisTime, thisVals, '-', color=mainColor, linewidth=1.5, label='test', zorder=0)
 		if smoothing is not None:
 			av,at=movingAvg(thisVals,thisTime, smoothing)
-			ax.plot(at, av, '-', color='#fb2e2e', linewidth=2.5, zorder=1)
-		if trend is not None:
+			ax.plot(at, av, '-', color=avgLineColor, linewidth=2.5, zorder=1)
+		if trend is not None and trend!=False:
 			trendChecked=[None,None]
 			trendChecked[0]=min([t for t,v in zip(thisTime,thisVals) if v is not None]) if trend[0] in [-1,None] else trend[0]
 			trendChecked[1]=max([t for t,v in zip(thisTime,thisVals) if v is not None]) if trend[1] in [-1,None] else trend[1]
@@ -78,10 +88,11 @@ def interannualVariability(vals,time,trend=[None,None],fn=None,smoothing=None, x
 				stat=dict({'slope':sl2, 'intercept':inter2, 'r':r_value2, 'p':p_value2, 'std':std_err2,
 						   'yMin':trendChecked[0], 'yMax':trendChecked[1]})
 				if not None in trendChecked:
-					ax.plot([trendChecked[0], trendChecked[1]], [inter2+sl2*trendChecked[0], sl2*trendChecked[1]+inter2], '--', color='black', linewidth=2, zorder=2)
+					ax.plot([trendChecked[0], trendChecked[1]], [inter2+sl2*trendChecked[0], sl2*trendChecked[1]+inter2], '--', color=trendLineColor, linewidth=2, zorder=2)
 			else:
 				print 'Not enough data to estimate trend'
 			allStat.append(stat)
+		lineNumber+=1
 	# set axis limits
 	x1,x2,y1,y2 = ax.axis()
 	ax.axis((xLim[0] if xLim[0] else x1, xLim[1] if xLim[1] else x2,
