@@ -198,7 +198,7 @@ class cliData:
 					val=createYearDataObj(self,item)
 					self.yearObjects[item]=val
 			else:
-				logging.warning("нет данных для года " + str(item) + " на станции" + str(self.meta['ind']))
+				logging.warning("no data for year " + str(item) + " for station " + str(self.meta['ind']))
 				val=createYearDataObj(self,item)
 				self.yearObjects[item]=val
 		return val
