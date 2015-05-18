@@ -113,12 +113,12 @@ class ModelsEvaluation(object):
 	# к тому же большая часть функция работает только для одного типа данных
 	#todo: тестировать
 
-	def __init__(self,project,dt):
+	def __init__(self,project,dt,scenario='historical'):
 		head, tail=os.path.split(project)
 		self.projectName=tail
 		self.homesrc = os.path.abspath(head)+'\\'
 		self.dt = dt
-		self.scenario='historical'
+		self.scenario=scenario
 		self.createFoldersTree()
 		self.regions = dict()
 		self.models = dict()
