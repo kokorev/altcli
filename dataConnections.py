@@ -15,6 +15,10 @@ from netCDF4 import num2date
 import numpy as np
 from glob import glob
 import itertools
+import logging
+
+cfg=config()
+logging.basicConfig(format = u'%(filename)s[LINE:%(lineno)d]# %(levelname)-8s [%(asctime)s]  %(message)s', level = logging.DEBUG)
 
 
 class dataConnection():
@@ -38,6 +42,217 @@ class dataConnection():
 		""" Should be overridden
 		return cliData instanse of point with given index """
 		raise NotImplementedError, "dataConnection.getPoint(ind) must be implemented"
+
+
+class netcdfConnection(dataConnection):
+	"""
+	allow one to use original CMIP5 data in netCDF format
+	"""
+	def __init__(self, fn, convert=True):
+		fn=os.path.abspath(fn)
+		try:
+			self.f=nc.Dataset(fn)
+		except RuntimeError:
+			raise IOError, "no such file or dir %s"%fn
+		if self.f.project_id!='CMIP5':
+			print 'projet_id is "%s" not "CMIP5"'%self.f.project_id
+		# определяем основную переменную в массиве, это так которая зависит от трёх других
+		self.setMainVariable()
+		self.setConverter(convert)
+		self.setLatLon()
+		self.setDateConverter()
+		self.cliSetMeta = {'modelId':self.f.model_id, 'calendar':self.f.variables['time'].calendar, 'source':fn,
+						   'scenario':self.f.experiment_id, 'dt':self.dt}
+
+
+	def setConverter(self, convert=False):
+		"""
+		define function for conversion to standard units
+		@return:
+		"""
+		if self.dt=='temp' and convert is True:
+			from tempConvert import kelvin2celsius
+			self.convertValue=lambda val,year,month: kelvin2celsius(val)
+			self.convertArray=lambda arr: np.subtract(arr,273.15)
+		elif self.dt=='prec' and convert is True:
+			if self.f.frequency=='day':
+				from precConvert import si2mmPerDay
+				self.convertValue=si2mmPerDay
+			elif self.f.frequency=='mon':
+				from precConvert import si2mmPerMonth
+				self.convertValue=si2mmPerMonth
+				self.convertArray=np.vectorize(lambda val: val*86400*30.5, otypes=[np.float])
+		else:
+			self.convertValue=lambda val,year,month: val
+			self.convertArray=lambda arr: arr
+#			print "Warning! There is no converter for data type = '%s'"%self.dt
+
+	def setLatLon(self, latName='lat', lonName='lon'):
+		self.lat=self.f.variables[latName]
+		self.latvals=[self.lat[l] for l in range(self.lat.size)]
+		self.lon=self.f.variables[lonName]
+		self.lonvals=[cLon(self.lon[l]) for l in range(self.lon.size)]
+
+
+	def setMainVariable(self, dt=None):
+		"""
+		setting main variable in dataset. It is the one that depends on three other or defined by user in dt parameter
+		@return:
+		"""
+		tmpcfg = config()
+		if dt is None:
+			dtList=list()
+			for v in self.f.variables:
+				try:
+					if self.f.variables[v].standard_name in tmpcfg.elSynom: dtList.append(v)
+				except AttributeError:
+					continue
+			# dtList=[v for v in self.f.variables if self.f.variables[v].standard_name in tmpcfg.elSynom]
+			if len(dtList)>1: raise ValueError, "Please specify the main variable"
+			self.dt=tmpcfg.elSynom[self.f.variables[dtList[0]].standard_name]
+			self.var=self.f.variables[dtList[0]]
+		else:
+			try:
+				self.dt=tmpcfg.elSynom[dt]
+			except KeyError:
+				self.dt=dt
+			self.var=self.f.variables[dt]
+		try:
+			self.fillValue=self.var._FillValue
+		except AttributeError:
+			self.fillValue=None
+
+
+	def setDateConverter(self):
+		"""
+
+		@return:
+		"""
+		if self.f.variables['time'].units=='days since 1-01-01 00:00:00':
+			self.timeUnits='days since 0001-01-01 00:00:00'
+		elif self.f.variables['time'].units=='days since  850-1-1 00:00:00':
+			self.timeUnits='days since 0850-1-1 00:00:00'
+		else:
+			self.timeUnits=self.f.variables['time'].units
+		try:
+			self.startDate=nc.num2date(self.f.variables['time'][0], self.timeUnits, self.cliSetMeta['calendar'])
+		except ValueError:
+			logging.error('Warning! failed to parse date string -%s. Model id - %s. startDate set to 0850-1-1 assuming model is MPI'%(self.f.variables['time'].units,self.f.model_id))
+			raise
+		self.startYear = int(self.startDate.year)
+		self.startMonth = int(self.startDate.month)
+
+
+	def getPoint(self, item):
+		"""
+		self[(latInd,lonInd)] возвращает объект cliData
+		item could be either point index or (latIndex, lonIndex) but not (lat, lon). Use self.latlon2latIndlonInd()
+		"""
+		try:
+			latInd, lonInd = item
+		except TypeError:
+			latInd, lonInd = self.ind2latindlonind(item)
+		except:
+			print self.f.model_id, item
+			raise
+		meta={'ind':self.latlonInd2ind(latInd, lonInd), 'lat':self.latvals[latInd], 'lon':self.lonvals[lonInd],
+			  'dt':self.dt}
+		vals=self.var[:,latInd,lonInd]
+		gdat=[]
+		for yn,i in enumerate(range(0,len(vals),12)):
+			tyear=self.startYear+yn
+			lineVals=vals[i:i+12]
+			if len(lineVals)==12:
+				gdat.append([tyear, self.convertArray(lineVals)])
+		return createCliDat(meta=meta, gdat=gdat,fillValue=self.fillValue)
+
+
+	def getArray(self,yMin=None,yMax=None,month=None,latMin=None,lonMin=None,latMax=None,lonMax=None):
+		"""
+		Возвращает трехмерный numpy массив значений, ограниченный заданными широтами и временем
+		"""
+		date=num2date(self.f.variables['time'][:], self.timeUnits, self.cliSetMeta['calendar'])
+		var=np.array(self.var)
+		timeArr=np.array([(v.year,v.month, v.day) for v in date],
+						 dtype=[('year','i4'), ('month','i2'), ('day','i2')])
+		timeMask=np.ones(timeArr['year'].shape,dtype=bool)
+		if yMin is not None:
+			timeMask = timeMask & (timeArr['year'] >= yMin)
+		if yMax is not None:
+			timeMask = timeMask & (timeArr['year'] <= yMax)
+		if month is not None:
+			timeMask = timeMask & (timeArr['month']==month)
+		var=var[timeMask,:,:]
+		lat=np.array(self.lat)
+		latMask=np.ones(lat.shape,dtype=bool)
+		if latMin is not None:
+			latMask = latMask & (lat >= latMin)
+		if latMax is not None:
+			latMask = latMask & (lat <= latMax)
+		var=var[:,latMask,:]
+		lon=np.array(self.lon)
+		lonMask=np.ones(lon.shape,dtype=bool)
+		if lonMin is not None:
+			lonMask = lonMask & (lon >= lonMin)
+		if lonMax is not None:
+			lonMask = lonMask & (lon <= lonMax)
+		var=var[:,:,lonMask]
+		return var
+
+	def getAllMetaDict(self):
+		"""
+		Возвращает словарь метаданных для всех узлов сетки
+		"""
+		res=dict()
+		ind=0
+		for lat,lon in itertools.product(self.latvals,self.lonvals):
+			res[ind]={'ind':ind, 'lat':lat, 'lon':lon, 'dt':self.dt}
+			ind+=1
+		return res
+
+
+	def latlon2latIndlonInd(self, lat, lon):
+		"""
+		считает индексы ячеек из координат
+		!Внимание! индексы ячеек разные для разных моделей(сеток) разные
+		"""
+		try:
+			if lon<0: lon += 360
+			lonInd=self.lonvals.index(lon)
+			latInd=self.latvals.index(lat)
+		except ValueError:
+			print 'Valid lat indexes are -'
+			print self.latvals
+			print 'Valid lon indexes are -'
+			print self.lonvals
+			raise
+		return latInd, lonInd
+
+	def latlonInd2ind(self, latInd, lonInd):
+		"""
+		Расчитывает индекс ячейки из индексов по x,y
+		"""
+		return int(latInd*self.lon.size+lonInd)
+
+	def ind2latindlonind(self, ind):
+		""" переводит номер узла в индексы массива """
+		latInd=int(ind/self.lon.size)
+		lonInd=ind - latInd*self.lon.size
+		return latInd, lonInd
+
+	def closestDot(self, lat, lon):
+		"""
+		считает индексы ячеек из координат
+		!Внимание! индексы ячеек разные для разных моделей(сеток) разные
+		"""
+		if lon<0: lon += 360
+		lonlist=[[i,abs(v-lon)] for i,v in enumerate(self.lonvals)]
+		lonlist.sort(key=lambda a: a[1])
+		lonInd=lonlist[0][0]
+		latlist=[[i,abs(v-lat)] for i,v in enumerate(self.latvals)]
+		latlist.sort(key=lambda a: a[1])
+		latInd=latlist[0][0]
+		return latInd, lonInd
 
 
 class cmip5connection(dataConnection):
@@ -234,7 +449,6 @@ class cmip5connection(dataConnection):
 		return latInd, lonInd
 
 
-
 class cliGisConnection(dataConnection):
 	"""
 	climate data format for State Hydrological Institute
@@ -347,6 +561,63 @@ class GRDCConnection(dataConnection):
 		return self.meta
 
 
+class ncep2Connection(netcdfConnection):
+	"""
+	NCEP/DOE AMIP-II Reanalysis format
+	"""
+	def __init__(self, fn, convert=True):
+		fn=os.path.abspath(fn)
+		try:
+			self.f=nc.Dataset(fn)
+		except RuntimeError:
+			raise IOError, "no such file or dir %s"%fn
+		# определяем основную переменную в массиве, это так которая зависит от трёх других
+		self.setMainVariable()
+		self.setConverter(convert)
+		self.setLatLon()
+		self.cliSetMeta = {'calendar':self.f.variables['time'].calendar, 'source':fn, 'dt':self.dt}
+		self.setDateConverter()
+
+	def getPoint(self, item):
+		"""
+		self[(latInd,lonInd)] возвращает объект cliData
+		item could be either point index or (latIndex, lonIndex) but not (lat, lon). Use self.latlon2latIndlonInd()
+		"""
+		try:
+			latInd, lonInd = item
+		except TypeError:
+			latInd, lonInd = self.ind2latindlonind(item)
+		except:
+			print self.f.model_id, item
+			raise
+		meta={'ind':self.latlonInd2ind(latInd, lonInd), 'lat':self.latvals[latInd], 'lon':self.lonvals[lonInd],
+			  'dt':self.dt}
+		vals=self.var[:,0,latInd,lonInd]
+		gdat=[]
+		for yn,i in enumerate(range(0,len(vals),12)):
+			tyear=self.startYear+yn
+			lineVals=vals[i:i+12]
+			if len(lineVals)==12:
+				gdat.append([tyear, self.convertArray(lineVals)])
+		return createCliDat(meta=meta, gdat=gdat)
+
+class CRUTEMP4Connection(netcdfConnection):
+	"""
+
+	"""
+	def __init__(self, fn):
+		fn=os.path.abspath(fn)
+		try:
+			self.f=nc.Dataset(fn)
+		except RuntimeError:
+			raise IOError, "no such file or dir %s"%fn
+		# определяем основную переменную в массиве, это так которая зависит от трёх других
+		self.setMainVariable('temperature_anomaly')
+		self.setConverter(False)
+		self.setLatLon(latName='latitude', lonName='longitude')
+		self.warningShown = False
+		self.cliSetMeta = {'calendar':self.f.variables['time'].calendar, 'source':fn, 'dt':self.dt}
+		self.setDateConverter()
 
 
 
