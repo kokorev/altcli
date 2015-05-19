@@ -130,6 +130,7 @@ def voronoi(cdl,maskPoly,showMap=False):
 	Возвращает словарь {индекс станции: Полигон shapely}
 	Если у станции нету полигона внутри задоного контура, будет стоять None
 	"""
+	from altCli import metaData
 	pl=dict()
 	if type(cdl)==dict:
 		pl=cdl
