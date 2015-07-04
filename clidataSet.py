@@ -16,7 +16,7 @@ __email__ = 'vasilykokorev@gmail.com'
 from clidata import *
 from geocalc import calcDist
 from common import timeit
-cfg=config()
+from common import elSynom
 
 
 class tempData(cliData):
@@ -32,7 +32,7 @@ class tempData(cliData):
 
 
 def createCliDat(meta, gdat=None, fillValue=None):
-	dt = cfg.elSynom[meta['dt']]
+	dt = elSynom[meta['dt']]
 	if dt == 'temp':
 		dataObj = tempData(meta, gdat, fillValue=fillValue)
 	else:
@@ -69,10 +69,8 @@ class metaData:
 				self.stInds=[ind for ind in self.stMeta]
 		else:
 			self.stInds=[st.meta['ind'] for st in stList]
-
-		self.cfg = cfg
 		try:
-			meta['dt'] = self.cfg.elSynom[meta['dt']]
+			meta['dt'] = elSynom[meta['dt']]
 		except KeyError:
 			print meta['dt']
 			raise KeyError, "dt field is not exist or has unknown value"
@@ -104,9 +102,6 @@ class metaData:
 			except IOError:
 				pass
 				#raise IOError, 'fail to load %s'%source
-		cfg = config()
-		cfg.get = None # Зануляем ф-ю загрузки новых данных
-		cfg.getMeta = None # И ф-ю загрузки методанных
 		acl = metaData(meta)
 		acl.addSt(cliDataList)
 		return acl
@@ -288,9 +283,9 @@ class metaData:
 			for ind in self.stInds:
 				if year in self[ind].timeInds:
 					ti = self[ind].timeInds[year]
-					vals=list(self[ind].data[ti])
+					vals=self[ind].data[ti].filled(-999.99)
 				else:
-					vals=[-999.99]*12
+					vals=np.array([-999.99]*12)
 				allDat.append(vals)
 			dat=np.ma.masked_values(allDat, -999.99, copy=True)
 			ws=[weight[ind] for ind in self.stInds] if weight is not None else None

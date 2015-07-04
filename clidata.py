@@ -5,7 +5,8 @@ Custom types for monthly climate timeseries
 __author__ = 'Vasily Kokorev'
 __email__ = 'vasilykokorev@gmail.com'
 
-from common import *
+from common import timeit
+from common import elSynom
 import clicomp as cc
 import numpy as np
 from scipy import stats
@@ -15,20 +16,8 @@ import functools
 import logging
 import copy
 
-cfg=config()
 logging.basicConfig(format = u'%(filename)s[LINE:%(lineno)d]# %(levelname)-8s [%(asctime)s]  %(message)s', level = logging.DEBUG)
 
-
-def timeit(method):
-	def timed(*args, **kw):
-		import time
-		ts = time.clock()
-		result = method(*args, **kw)
-		te = time.clock()
-		print '%r (%r, %r) %2.2f sec' %(method.__name__, args, kw, te-ts)
-		print '%r %3.3f sec' %(method.__name__, te-ts)
-		return result
-	return timed
 
 def getCacheId(method, *args, **kwargs):
 	"""
@@ -122,11 +111,8 @@ class cliData:
 		cfg=config() - exist mostly for backwards compatibility reasons
 		"""
 		#todo: принимать numpy array в качестве gdat
-		# if cfg == None: cfg = config()
-		# self.cfg = cfg
 		self.__name__ = 'cliData'
 		self.res = dict()
-		# self.setSeasons = self.cfg.setSeasons
 		self.yearObjects=dict()
 		self.precision=2
 		self.seasonsCache=dict()
@@ -137,27 +123,23 @@ class cliData:
 			print "в meta не указано ind"
 			raise KeyError
 		try:
-			meta['dt'] = cfg.elSynom[meta['dt']]
+			meta['dt'] = elSynom[meta['dt']]
 		except KeyError:
 			pass
 		self.meta = meta
-		self.filledValue=-999.99 if fillValue is None else fillValue
-		d=[ln for ln in gdat if not np.all(np.equal(ln[1], fillValue))]
+		self.filledValue = -999.99 if fillValue is None else fillValue
+		d=[ln for ln in gdat if not np.all(np.equal(ln[1], fillValue))] # throw out row where all data are missing
 		try:
 			self.data=np.ma.masked_values([strdat[1] for strdat in d], fillValue)
 			#self.noGaps=False
 		except TypeError:
-#			print 'It look like there is no gaps in your data. Are you sure??'
 			self.data=np.ma.masked_values([strdat[1] for strdat in d], -999.99)
-			#raise
-			# если нет пропусков
-			#self.data=np.array([strdat[1] for strdat in d])
 			#self.noGaps=True
 		if fillValue is None: np.place(self.data, np.ma.getmaskarray(self.data), [self.filledValue])
 		#маска всегда должны быть массивом, иначе сложно проверить не пропущено ли значение
 		self.data.mask=np.ma.getmaskarray(self.data)
 		self.yList=[strdat[0] for strdat in d]
-		if len(self.yList) == 0: raise ValueError, 'Не пропущенные значения отсутствуют'
+		if len(self.yList) == 0: raise ValueError, 'No non-missing data'
 		self.timeInds={y:i for i,y in enumerate(self.yList)}
 		self.yMin, self.yMax = int(min(self.yList)), int(max(self.yList))
 		self.meta['yMin'] = self.yMin
@@ -476,10 +458,16 @@ class cliData:
 		dat=self.getSeasonsData(seasons)
 		res=dict()
 		for sn,d in dat.items():
+			if np.any(d.mask):
+				resMask=np.any(d.mask, axis=1)
+			else:
+				resMask=None
 			if self.meta['dt']=='prec':
 				r=d.sum(axis=1)
 			else:
 				r=d.mean(axis=1)
+			if resMask is not None:
+				r.mask=resMask
 			res[sn]=r
 		return res
 
@@ -992,7 +980,7 @@ class temp_yearData(yearData):
 		return cc.sumMoreThen(self.data,0,2)*30.5
 
 
-	@cache
+	# @cache
 	def conditionalSum(self,x, c='GT'):
 		"""
 		Уточнённый алгоритм расчёта градусо дней
