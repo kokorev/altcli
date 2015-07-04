@@ -18,3 +18,7 @@ def si2mmPerMonth(val,year=None,month=None):
 
 def si2mmPerDay(val,year=None,month=None):
 	return val*86400
+
+
+def cm2mm(val,year=None,month=None):
+	return val/10.
