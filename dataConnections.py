@@ -7,7 +7,7 @@ __author__ = 'Vasily Kokorev'
 __email__ = 'vasilykokorev@gmail.com'
 
 from clidataSet import createCliDat
-from altCli import config
+from common import elSynom
 from geocalc import cLon
 import os.path
 import netCDF4 as nc
@@ -17,7 +17,6 @@ from glob import glob
 import itertools
 import logging
 
-cfg=config()
 logging.basicConfig(format = u'%(filename)s[LINE:%(lineno)d]# %(levelname)-8s [%(asctime)s]  %(message)s', level = logging.DEBUG)
 
 
@@ -48,21 +47,18 @@ class netcdfConnection(dataConnection):
 	"""
 	allow one to use original CMIP5 data in netCDF format
 	"""
-	def __init__(self, fn, convert=True):
+	def __init__(self, fn, convert=False):
 		fn=os.path.abspath(fn)
 		try:
 			self.f=nc.Dataset(fn)
 		except RuntimeError:
 			raise IOError, "no such file or dir %s"%fn
-		if self.f.project_id!='CMIP5':
-			print 'projet_id is "%s" not "CMIP5"'%self.f.project_id
 		# определяем основную переменную в массиве, это так которая зависит от трёх других
 		self.setMainVariable()
 		self.setConverter(convert)
 		self.setLatLon()
+		self.cliSetMeta = {'calendar':self.f.variables['time'].calendar, 'source':fn,'dt':self.dt}
 		self.setDateConverter()
-		self.cliSetMeta = {'modelId':self.f.model_id, 'calendar':self.f.variables['time'].calendar, 'source':fn,
-						   'scenario':self.f.experiment_id, 'dt':self.dt}
 
 
 	def setConverter(self, convert=False):
@@ -75,13 +71,17 @@ class netcdfConnection(dataConnection):
 			self.convertValue=lambda val,year,month: kelvin2celsius(val)
 			self.convertArray=lambda arr: np.subtract(arr,273.15)
 		elif self.dt=='prec' and convert is True:
-			if self.f.frequency=='day':
+			if self.var.units.lower()=='kg/m^2/s' and self.f.frequency=='day':
 				from precConvert import si2mmPerDay
 				self.convertValue=si2mmPerDay
-			elif self.f.frequency=='mon':
+			elif self.var.units.lower()=='kg/m^2/s' and self.f.frequency=='mon':
 				from precConvert import si2mmPerMonth
 				self.convertValue=si2mmPerMonth
 				self.convertArray=np.vectorize(lambda val: val*86400*30.5, otypes=[np.float])
+			elif self.var.units.lower()=='cm':
+				from precConvert import cm2mm
+				self.convertValue=cm2mm
+				self.convertArray=np.vectorize(lambda val: val/10., otypes=[np.float])
 		else:
 			self.convertValue=lambda val,year,month: val
 			self.convertArray=lambda arr: arr
@@ -94,33 +94,56 @@ class netcdfConnection(dataConnection):
 		self.lonvals=[cLon(self.lon[l]) for l in range(self.lon.size)]
 
 
-	def setMainVariable(self, dt=None):
+	def setMainVariable(self, dt=None, fillValue=None):
 		"""
 		setting main variable in dataset. It is the one that depends on three other or defined by user in dt parameter
 		@return:
 		"""
 		tmpcfg = config()
+		varName=None
+		self.fillValue=fillValue
 		if dt is None:
 			dtList=list()
 			for v in self.f.variables:
-				try:
-					if self.f.variables[v].standard_name in tmpcfg.elSynom: dtList.append(v)
-				except AttributeError:
+				if v in tmpcfg.elSynom:
+					dtList.append(v)
+					varName=v
 					continue
-			# dtList=[v for v in self.f.variables if self.f.variables[v].standard_name in tmpcfg.elSynom]
-			if len(dtList)>1: raise ValueError, "Please specify the main variable"
-			self.dt=tmpcfg.elSynom[self.f.variables[dtList[0]].standard_name]
-			self.var=self.f.variables[dtList[0]]
+				try:
+					if self.f.variables[v].standard_name in tmpcfg.elSynom:
+						dtList.append(self.f.variables[v].standard_name)
+						varName=v
+				except AttributeError:
+					pass
+				else:
+					continue
+				try:
+					if self.f.variables[v].long_name in tmpcfg.elSynom:
+						dtList.append(self.f.variables[v].long_name)
+						varName=v
+				except AttributeError:
+					pass
+				else:
+					continue
+			assert len(dtList)==1, "Please specify the main variable"
+			self.dt=tmpcfg.elSynom[dtList[0]]
+			self.var=self.f.variables[varName]
 		else:
 			try:
 				self.dt=tmpcfg.elSynom[dt]
 			except KeyError:
 				self.dt=dt
 			self.var=self.f.variables[dt]
-		try:
-			self.fillValue=self.var._FillValue
-		except AttributeError:
-			self.fillValue=None
+
+		if self.fillValue is None:
+			try:
+				self.fillValue=self.var._FillValue
+			except AttributeError:
+				pass
+			try:
+				self.fillValue=self.var.missing_value
+			except AttributeError:
+				pass
 
 
 	def setDateConverter(self):
@@ -270,8 +293,7 @@ class cmip5connection(dataConnection):
 		# определяем основную переменную в массиве, это так которая зависит от трёх других
 		dtList=[v for v in self.f.variables if self.f.variables[v].ndim==3]
 		if len(dtList)>1:
-			tmpcfg = config()
-			dtList=[tmpDt for tmpDt in dtList if tmpDt in tmpcfg.elSynom]
+			dtList=[tmpDt for tmpDt in dtList if tmpDt in elSynom]
 			if len(dtList)>1: raise TypeError, "Unknown data type in nc file"
 		self.dt=dtList[0]
 		if self.dt=='tas' and convert is True:
@@ -619,5 +641,110 @@ class CRUTEMP4Connection(netcdfConnection):
 		self.cliSetMeta = {'calendar':self.f.variables['time'].calendar, 'source':fn, 'dt':self.dt}
 		self.setDateConverter()
 
+class CRUTS3Connection(netcdfConnection):
+	"""
+
+	"""
+	def __init__(self, fn):
+		fn=os.path.abspath(fn)
+		try:
+			self.f=nc.Dataset(fn)
+		except RuntimeError:
+			raise IOError, "no such file or dir %s"%fn
+		# определяем основную переменную в массиве, это так которая зависит от трёх других
+		self.setMainVariable()
+		self.setConverter(False)
+		self.setLatLon()
+		self.warningShown = False
+		self.cliSetMeta = {'calendar':self.f.variables['time'].calendar, 'source':fn, 'dt':self.dt}
+		self.setDateConverter()
+
+class ERAInterimConnection(netcdfConnection):
+	"""
+	ERA-Interim reanalysis
+	"""
+	def __init__(self, fn):
+		fn=os.path.abspath(fn)
+		try:
+			self.f=nc.Dataset(fn)
+		except RuntimeError:
+			raise IOError, "no such file or dir %s"%fn
+		# определяем основную переменную в массиве, это так которая зависит от трёх других
+		self.setMainVariable()
+		self.setConverter(True)
+		self.setLatLon(latName='latitude', lonName='longitude')
+		self.warningShown = False
+		self.cliSetMeta = {'calendar':self.f.variables['time'].calendar, 'source':fn, 'dt':self.dt}
+		self.setDateConverter()
+
+class DelawareConnection(netcdfConnection):
+	"""
+	"""
+	def __init__(self, fn):
+		fn=os.path.abspath(fn)
+		try:
+			self.f=nc.Dataset(fn)
+		except RuntimeError:
+			raise IOError, "no such file or dir %s"%fn
+		# определяем основную переменную в массиве, это так которая зависит от трёх других
+		self.setMainVariable()
+		self.setConverter(False)
+		self.setLatLon()
+		self.cliSetMeta = {'calendar':'standard', 'source':fn,'dt':self.dt}
+		self.setDateConverter()
 
 
+class CH4flaskNOAA():
+	""" read NOAA CH4 methane concentration data """
+
+	def __init__(self, dataPath, metaFilePath):
+		self.dataPath = dataPath
+		self.meta, self.codes = self.readMeta(metaFilePath)
+		self.cliSetMeta = {'dt':'ch4', 'codes':self.codes}
+
+	def getFn(self,code):
+		return self.dataPath + r'\ch4_%s_surface-flask_1_ccgg_month.txt' % (code.lower())
+
+	def readDataFile(self, code):
+		fn = self.dataPath + r'\ch4_%s_surface-flask_1_ccgg_month.txt' % (code.lower())
+		dat = np.genfromtxt(fn, comments='#', usecols=[1, 2, 3])
+		years = list(set(dat[:, 0]))
+		years.sort()
+		gdat = []
+		for y in years:
+			tyv = dat[dat[:, 0] == y]
+			if len(tyv) == 12:
+				d = list(tyv[:, 2])
+			else:
+				d = [None] * 12
+				for ln in tyv:
+					d[int(ln[1] - 1)] = ln[2]
+			gdat.append([y, [round(v, 2) if v is not None else None for v in d]])
+		return gdat
+
+	def getPoint(self, ind):
+		if type(ind) is str:
+			ind = self.codes[ind]
+		else:
+			ind = int(ind)
+		tm = self.meta[ind]
+		gdat = self.readDataFile(tm['code'])
+		return createCliDat(meta=tm, gdat=gdat, fillValue=None)
+
+	def readMeta(self, fn):
+		files=os.listdir(self.dataPath)
+		ma = np.genfromtxt(fn, delimiter=';', skip_header=1, dtype=None)
+		names = ['ind', 'code', 'isDiscontinued', 'name', 'country', 'lat', 'lon', 'elevation', 'timeZone']
+		meta = dict()
+		codes = dict()
+		for ln in ma:
+			d = {k: v for k, v in zip(names, ln)}
+			dataFn  =r'ch4_%s_surface-flask_1_ccgg_month.txt' % (d['code'].lower())
+			if dataFn in files:
+				meta[d['ind']] = d
+				meta[d['ind']]['dt'] = 'ch4'
+				codes[d['code']] = d['ind']
+		return meta, codes
+
+	def getAllMetaDict(self):
+		return self.meta
