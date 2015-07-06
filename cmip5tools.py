@@ -8,11 +8,8 @@
 Добавляем даныне по одной модели
 >>> me.addModel(r'E:\data\cmip5\data\tas\historical\CanESM2_historical.nc')
 Добавляем задание расчёта
-Годовой тренд
 >>> me.addTask({'trend70-99': {'fn': 'trend', 'param': [1970, 1999], 'converter': lambda a: round(a[0] * 100, 2)}})
-сумма положительных температур
 >>> me.addTask({'ddt70-99': {'fn': 'trendParam', 'param': ['conditionalSum',[0], 1970, 1999, lambda a: a[0], 3], 'converter':lambda a: a[0]*100}})
-Тренд зимних температур
 >>> me.addTask({'winterTrend':{'fn': 's_trend', 'param': [1970, 1999, {'w':[-1,1,2]}, 3], 'converter':lambda a: a['w'][0]*100}})
 Расчтиать задание по добавленым моделям
 >>> ro=me.getResultsObj()
@@ -23,14 +20,15 @@
 Сохранить проект
 >>> me.save()
 """
-
 import dill
 import pickle
 import shutil
 import os
 import logging
 import glob
-from altCli.dataConnections import cmip5connection as c5c
+from altCli.dataConnections import cmip5connection
+from altCli.dataConnections import ncep2Connection
+from altCli.dataConnections import CRUTEMP4Connection
 from altCli import metaData
 from altCli import cliData
 from altCli.geocalc import shpFile2shpobj
@@ -39,43 +37,46 @@ from altCli.common import timeit
 
 logging.basicConfig(format = u'%(filename)s[LINE:%(lineno)d]# %(levelname)-8s [%(asctime)s]  %(message)s', level = logging.DEBUG)
 
+
 class Model(object):
 	"""
 
 	@param source:
 	"""
 
-	def __init__(self, source):
+	def __init__(self, sourceFile, sourceConn=cmip5connection):
 		"""
 		если source - строка указывающая файл с данными cmip5 то при инициализации создаётся объект metaData
 		если source словарь вида {'source':sourceSrc, } то объект metaData создаётся при первом обращении,
 		а остальные данные из словаря переносятся в self.meta
 		"""
-		if type(source) is str:
-			self.source = source
-		elif type(source) is dict:
-			assert 'source' in source, "initializing dictionary should have 'source' key in it"
-			self.source = source['source']
+		if type(sourceFile) is str:
+			self.source = sourceFile
+		elif type(sourceFile) is dict:
+			assert 'source' in sourceFile, "initializing dictionary should have 'source' key in it"
+			self.source = sourceFile['source']
+		self.connF=sourceConn
 		self.fullyInit=False
 
+
 	def __late_init__(self):
-		cdo, conn = self.getCDO(self.source)
+		cdo, conn = self.getCDO()
 		self.cdo = cdo
 		self.conn = conn
 		self.meta = conn.cliSetMeta
 		self.fullyInit=True
 
-	@staticmethod
-	def getCDO(source):
+
+	def getCDO(self):
 		"""
 
 		@param source:
 		@return: @raise:
 		"""
 		try:
-			conn = c5c(source)
+			conn = self.connF(self.source)
 		except:
-			logging.critical( 'Failed to load model %s' % source )
+			logging.critical( 'Failed to load %s' % self.source )
 			raise
 		else:
 			cdo = metaData(meta={'dt': conn.cliSetMeta['dt']}, dataConnection=conn)
@@ -116,12 +117,12 @@ class ModelsEvaluation(object):
 	# к тому же большая часть функция работает только для одного типа данных
 	#todo: тестировать
 
-	def __init__(self,project,dt):
+	def __init__(self,project,dt,scenario='historical'):
 		head, tail=os.path.split(project)
 		self.projectName=tail
 		self.homesrc = os.path.abspath(head)+'\\'
 		self.dt = dt
-		self.scenario='historical'
+		self.scenario=scenario
 		self.createFoldersTree()
 		self.regions = dict()
 		self.models = dict()
@@ -132,10 +133,11 @@ class ModelsEvaluation(object):
 		self.obsResults=dict()
 
 
+
 	def createFoldersTree(self):
 		""" создать необходимые папки под проект
 		"""
-		for src in [r'\data\models\%s\%s'%(self.dt,self.scenario), r'\data\obs\%s'%self.dt, r'\regshp',r'\results\%s'%self.dt]:
+		for src in ['data\\models\\'+self.dt+'\\%s'%self.scenario, 'data\\obs\\'+self.dt, 'regshp','results\\'+self.dt]:
 			try:
 				os.makedirs(self.homesrc+src)
 			except WindowsError:
@@ -351,13 +353,10 @@ class ModelsEvaluation(object):
 		"""
 		#self.regionMeanData[reg][mod]
 		for reg in self.regions:
-			isRegOld=reg in self.regionMeanData
 			for mod in self.models:
 				if reCalcAll:
 					cdo=self.calcRegionalMean(reg,mod,replace=True)
 					self.regionMeanData[reg][mod] = cdo
-				elif isRegOld:
-					if mod in self.regionMeanData[reg]: continue
 				else:
 					self.getModelRegionMean(reg, mod)
 			if reCalcAll and self.obsDataSet is not None:
@@ -371,8 +370,7 @@ class ModelsEvaluation(object):
 		modelsSaveDict = {mn:mo.save() for mn, mo in self.models.items()}
 		regionsSaveDict = self.regions
 		saveDict = {'models': modelsSaveDict, 'regions': regionsSaveDict, 'tasks':self.tasks, 'homesrc': self.homesrc, 'dt':self.dt, }
-		print fn,self.homesrc
-		pickle.dump(saveDict, open(self.homesrc + fn, 'w'))
+		pickle.dump(saveDict, open(fn, 'w'))
 		for cdo,reg,mod in self.cliDataObjList:
 			cdo.save(self.getModelDataSrc(reg,mod),replace=True, results=False)
 
@@ -463,3 +461,96 @@ class Results(object):
 		table.sort(key=lambda a:a[1])
 		txt=self.listtable2txt(table)
 		with open(self.parent.homesrc+'results\\%s\\TotalRank_%s_%s_ranks.csv'%(self.dt,self.parent.projectName,str(tasksList)),'w') as f: f.write(txt)
+
+
+
+
+# старый класс сравнения моделей
+import clidataSet as clidat
+class modelSet():
+	"""
+	!!! УСТАРЕВШИЙ !!!
+	Класс набора моделей, реалезующий ф-ии сравнения моделей и построения ансамблей
+	"""
+	def __init__(self,dt):
+		raise DeprecationWarning, "this class was replaced by following classes - ModelsEvaluation, Model, Results"
+		self.models=dict()
+		self.dt={'dt':dt}
+		self.regionsDict=dict()
+		self.regionsAvg=dict()
+		self.results=dict()
+		self.scenario=None
+
+	def setModelData(self,modList,dt):
+		"""
+		Подключаем исходные данные моделей
+		"""
+		scenariosList=list()
+		for fn in modList:
+			conn=cmip5connection(fn,dt)
+			self.models[conn.modelId]=clidat.metaData(meta={'dt':dt},dataConnection=conn)
+			scenariosList.append(self.models[conn.modelId].meta['scenario'])
+		if len(set(scenariosList))>1: raise StandardError, "different scenarios used in different files"
+		if self.scenario is None: self.scenario=scenariosList[0]
+		if scenariosList[0]!=self.scenario:
+			raise StandardError, "scenario set as %s, you trying to load %s"%(self.scenario, scenariosList[0])
+		self.results={mod:dict() for mod in self.models if mod not in self.results}
+		pass
+
+	def loadRegionMeanData(self,fn):
+		cdo=cliData.load(fn)
+		reg,mod=cdo.meta['region'], cdo.meta['model']
+		if reg not in self.regionsAvg: self.regionsAvg[reg]=dict()
+		try:
+			self.regionsAvg[reg][mod]=cdo
+		except KeyError:
+			print 'cliData object should have "region" and "model" keys in the meta dictionary'
+			raise
+		else:
+			self.models[mod]=None
+			self.results[mod]=dict()
+		pass
+
+	def addRegion(self,shp,name):
+		"""
+		Добавляем в словарь узлы сетки попадающие в данный полигон для каждой модели
+		"""
+		self.regionsDict[name]={modName:modObj.setStInShape(shp) for modName,modObj in self.models.items()}
+		self.regionsAvg[name]={modName:None for modName in self.models}
+
+	def getRegionMean(self,region,model):
+		"""
+		Кэшируюшая ф-я получения среднерегионального ряда для какой-либо модели
+		"""
+		if self.regionsAvg[region][model] is None:
+			dots=self.regionsDict[region][model]
+			stList=[self.models[model][d] for d in dots]
+			cso=clidat.metaData({'dt':self.dt}, stList=stList)
+			cdo=cso.setRegAvgData()
+			self.regionsAvg[region][model]=cdo
+			r=cdo
+		else:
+			r=self.regionsAvg[region][model]
+		return r
+
+	def calcRegParam(self,task,region=None):
+		"""
+		расчитывает задание в формате {уникальное имя:{fn:имя функции, param:[параметры]}}
+		для каждого среднерегионального каждой модели и сохраняет результат в self.results
+		"""
+		rList=[region] if region is not None else [r for r in self.regionsAvg]
+		for modName, modObj in self.models.items():
+			for reg in rList:
+				res=self.regionsAvg[reg][modName].calcTask(task)
+				if modName not in self.results: print self.results
+				self.results[modName].update({reg:res})
+		return self.results
+
+	def printModRegFunctValTable(self,fname):
+		"""
+		Выводит таблицу значенией функции для каждого регионаб для каждой модели
+		"""
+		txt='\t' + '\t'.join([str(reg) for reg in self.regionsAvg]) + '\n'
+		for mod in self.models:
+			txt+=mod+'\t'.join([str(self.results[mod][reg][fname]) for reg in self.regionsAvg])+'\n'
+		return txt
