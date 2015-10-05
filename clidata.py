@@ -987,58 +987,40 @@ class temp_yearData(yearData):
 		"""
 		#todo: уточнить логику работы в случаях когда точки перехода встречаются не каждый год
 		from datetime import datetime as dt
+		from calendar import isleap
 		if c=='GT':
 			ct=lambda v: v>x
-			ce=lambda v: v>=x
+			# ce=lambda v: v>=x
 		elif c=='LT':
 			ct=lambda v: v<x
-			ce=lambda v: v<=x
+			# ce=lambda v: v<=x
 		else:
 			raise ValueError, "c = GT | LT"
-		y=self.year
-		dat=[]
-		for yObj in [self, self.parent[y+1]]:
-			dat+=[[dt(yObj.year,m,15), yObj[m]] for m in range(1,13) if yObj[m] is not None]
-			points=yObj.crossingPoints(x)
-			if points is None and yObj.year==y:
-				return None,None
-			elif points is None and yObj.year!=y:
-				continue
+		dat=[[dt(self.year,m,15), self[m]] for m in range(1,13) if self[m] is not None]
+		points=self.crossingPoints(x)
+		if points is None:
+			vr = self.avg
+			if ct(vr):
+				t = 366 if isleap(self.year) else 365
+				psum = vr * t
+				tsum = t
 			else:
-				dat+=[[p,x] for p in points]
-		#массив дат и значений точек переходов и наблюдений за этот и следующий год, отсортированый по времени
-		dat.sort(key=lambda a:a[0])
-		psum=0
-		tsum=0
-		start=False
-		for i in range(len(dat)-1):
-			d1,v1=dat[i]
-			d2,v2=dat[i+1]
-			if v1==x and ce(v2):
-				if d1.year==y:
-					start=True
-				else:
-					break
-			if not start:continue
-			t=(d2-d1).days
-			if (ce(v1) and ct(v2)):
-				# начало или продолжение
-				psum+=(t*abs(v2-v1))/2. + t*abs(min([v2,v1]))
-				tsum+=t
-			elif (ct(v1) and v2==x):
-				#если промежуток от этотой точки до следующей попадает под условие
-				psum+=(t*abs(v2-v1))/2. + t*abs(min([v2,v1]))
-				tsum+=t
-				if (v2==x and d2.year>y):break # если период заканчивается в следующем году
-			elif v1<x<v2 or v1>x>v2:
-				# если пропущена точка перехода
-				psum,tsum=None,None
-				break
-			else:
-				continue
+				psum=0
+				tsum=0
 		else:
-			psum,tsum=None,None
-		if psum is not None: psum= round(psum, self.precision)
+			dat+=[[p,x] for p in points]
+			dat.sort(key=lambda a:a[0])
+			psum=0
+			tsum=0
+			for i in range(len(dat)-1):
+				d1, v1 = dat[i]
+				d2, v2 = dat[i+1]
+				t=(d2-d1).days
+				vr = (v1+v2)/2.
+				if ct(vr):
+					psum += vr * t
+					tsum += t
+		psum = round(psum, self.precision)
 		return psum,tsum
 
 
