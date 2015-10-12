@@ -290,8 +290,14 @@ class metaData:
 			dat=np.ma.masked_values(allDat, -999.99, copy=True)
 			ws=[weight[ind] for ind in self.stInds] if weight is not None else None
 			if dat.mask.all():continue
-			r=np.ma.average(dat,axis=0, weights=ws)
-			gdat.append([year,r.tolist(fill_value=-999.99)])
+			try:
+				r=np.ma.average(dat,axis=0, weights=ws)
+				gdat.append([year,r.tolist(fill_value=-999.99)])
+			except ZeroDivisionError:
+				gdat.append([year,[-999.99]*12])
+			except TypeError:
+				r=np.average(dat,axis=0, weights=ws)
+				gdat.append([year,r.tolist()])
 		numStUsed=sum([1 for i in weight if weight[i]!=0]) if weight is not None else len(self)
 		meta=dict(self.meta)
 		meta.update({'ind':0,'lat':0,'lon':0, 'stUsed':numStUsed})

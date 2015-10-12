@@ -716,7 +716,7 @@ class CH4flaskNOAA():
 			if len(tyv) == 12:
 				d = list(tyv[:, 2])
 			else:
-				d = [None] * 12
+				d = [-999] * 12
 				for ln in tyv:
 					d[int(ln[1] - 1)] = ln[2]
 			gdat.append([y, [round(v, 2) if v is not None else None for v in d]])
@@ -729,7 +729,7 @@ class CH4flaskNOAA():
 			ind = int(ind)
 		tm = self.meta[ind]
 		gdat = self.readDataFile(tm['code'])
-		return createCliDat(meta=tm, gdat=gdat, fillValue=None)
+		return createCliDat(meta=tm, gdat=gdat, fillValue=-999)
 
 	def readMeta(self, fn):
 		files=os.listdir(self.dataPath)
