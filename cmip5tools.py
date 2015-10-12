@@ -31,7 +31,7 @@ from altCli.dataConnections import ncep2Connection
 from altCli.dataConnections import CRUTEMP4Connection
 from altCli import metaData
 from altCli import cliData
-from altCli.geocalc import shpFile2shpobj
+from altCli.geocalc import shpFile2shpobj, voronoi
 from altCli import cc
 from altCli.common import timeit
 
@@ -236,11 +236,11 @@ class ModelsEvaluation(object):
 		assert reg in self.regions, "Region have not been added"
 		assert mod in self.models, "Model have not been added"
 		modObj = self.models[mod]['cdo']
-		shp = self.homesrc + 'regshp\\%s.shp' % reg
-		dots = modObj.setStInShape(shp)
+		thisShp = self.homesrc + 'regshp\\%s.shp' % reg
+		dots = modObj.setStInShape(thisShp)
 		if len(dots)>0:
 			regModelObj = metaData(modObj.meta, stList=[modObj[d] for d in dots])
-			cdo = regModelObj.setRegAvgData()
+			cdo = regModelObj.setRegAvgData(greedy=True)
 			cdo.save(self.getModelDataSrc(reg,mod), replace=replace)
 		else:
 			cdo=None
@@ -250,10 +250,18 @@ class ModelsEvaluation(object):
 
 	def calcObsRegMean(self,reg, replace=False):
 		shp = self.homesrc + 'regshp\\%s.shp' % reg
-		dots = self.obsDataSet.setStInShape(shp)
-		if len(dots)>0:
-			regObsObj = metaData(self.obsDataSet.meta, stList=[self.obsDataSet[d] for d in dots])
-			cdo = regObsObj.setRegAvgData(greedy=True)
+		shpobj=shpFile2shpobj(shp)
+		if type(shpobj) is list:
+			shpobj.sort(key=lambda a:a.area)
+			shpobj=shpobj[0]
+		vr=voronoi(self.obsDataSet, shpobj)
+		vra={i:s.area for i,s in vr.items() if s is not None}
+		vraSum=sum(vra.values())
+		vra={i:s/vraSum for i,s in vra.items()}
+		# dots = self.obsDataSet.setStInShape(shp)
+		if len(vra)>0:
+			regObsObj = metaData(self.obsDataSet.meta, stList=[self.obsDataSet[d] for d in vra])
+			cdo = regObsObj.setRegAvgData(greedy=True, weight=vra)
 			cdo.save(self.getObsDataSrc(reg), replace=replace)
 		else:
 			cdo=None
@@ -289,6 +297,8 @@ class ModelsEvaluation(object):
 				self.regionMeanData[reg][mod] = cdo
 			except IOError:
 				cdo = self.calcRegionalMean(reg, mod)
+			except ValueError:
+				cdo=None
 		return cdo
 
 
@@ -372,7 +382,8 @@ class ModelsEvaluation(object):
 		saveDict = {'models': modelsSaveDict, 'regions': regionsSaveDict, 'tasks':self.tasks, 'homesrc': self.homesrc, 'dt':self.dt, }
 		pickle.dump(saveDict, open(fn, 'w'))
 		for cdo,reg,mod in self.cliDataObjList:
-			cdo.save(self.getModelDataSrc(reg,mod),replace=True, results=False)
+			if cdo is not None:
+				cdo.save(self.getModelDataSrc(reg,mod),replace=True, results=False)
 
 	@staticmethod
 	@timeit
