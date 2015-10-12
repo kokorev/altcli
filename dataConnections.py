@@ -16,6 +16,8 @@ import numpy as np
 from glob import glob
 import itertools
 import logging
+from pyhdf import SD
+import datetime
 
 logging.basicConfig(format = u'%(filename)s[LINE:%(lineno)d]# %(levelname)-8s [%(asctime)s]  %(message)s', level = logging.DEBUG)
 
@@ -99,18 +101,17 @@ class netcdfConnection(dataConnection):
 		setting main variable in dataset. It is the one that depends on three other or defined by user in dt parameter
 		@return:
 		"""
-		tmpcfg = config()
 		varName=None
 		self.fillValue=fillValue
 		if dt is None:
 			dtList=list()
 			for v in self.f.variables:
-				if v in tmpcfg.elSynom:
+				if v in elSynom:
 					dtList.append(v)
 					varName=v
 					continue
 				try:
-					if self.f.variables[v].standard_name in tmpcfg.elSynom:
+					if self.f.variables[v].standard_name in elSynom:
 						dtList.append(self.f.variables[v].standard_name)
 						varName=v
 				except AttributeError:
@@ -118,7 +119,7 @@ class netcdfConnection(dataConnection):
 				else:
 					continue
 				try:
-					if self.f.variables[v].long_name in tmpcfg.elSynom:
+					if self.f.variables[v].long_name in elSynom:
 						dtList.append(self.f.variables[v].long_name)
 						varName=v
 				except AttributeError:
@@ -126,11 +127,11 @@ class netcdfConnection(dataConnection):
 				else:
 					continue
 			assert len(dtList)==1, "Please specify the main variable"
-			self.dt=tmpcfg.elSynom[dtList[0]]
+			self.dt=elSynom[dtList[0]]
 			self.var=self.f.variables[varName]
 		else:
 			try:
-				self.dt=tmpcfg.elSynom[dt]
+				self.dt=elSynom[dt]
 			except KeyError:
 				self.dt=dt
 			self.var=self.f.variables[dt]
@@ -748,3 +749,153 @@ class CH4flaskNOAA():
 
 	def getAllMetaDict(self):
 		return self.meta
+
+
+class AIRSconnection(dataConnection):
+
+	def __init__(self, pth, lev=1, varName='CH4_VMR_A', yMax=2015):
+		self.pth=pth
+		self.firstObservation = datetime.datetime(2002,9,1)
+		self.dt = 'ch4'
+		self.yMax=yMax
+		self.dataObjects = dict()
+		self.lev=lev
+		self.varName=varName
+		self.setLatLon()
+		self.cliSetMeta={'dt':'ch4'}
+
+	def parsfn(self,fn):
+		a=fn.split('.')
+		year,month,day=int(a[1]), int(a[2]), int(a[3])
+		lev,name,version=a[4:7]
+		return year,month,day,lev,name,version
+
+	def getFn(self,year,mon):
+		""" Возвращает имя файла для данного месяца данного года
+		"""
+		fns=glob(self.pth+r'\%i\AIRS.%i.%02i.01.L3.RetStd0*.v6.0.9.0.*.hdf'%(year,year,mon))
+		assert len(fns)<=1, "more then one file found"
+		fn=fns[0] if len(fns)==1 else None
+		return fn
+
+	def getDataObj(self,year, mon):
+		if year not in self.dataObjects:
+			self.dataObjects[year]=[None]*12
+		if self.dataObjects[year][mon-1] is None:
+			fn=self.getFn(year, mon)
+			if fn is not None:
+				f=SD.SD(fn)
+				d=f.select(self.varName)
+				r=d.get()
+			else:
+				f,r=None,None
+			self.dataObjects[year][mon-1] = [f,r]
+		else:
+			f, r = self.dataObjects[year][mon-1]
+		return f,r
+
+	def closeObj(self,year,mon):
+		if year in self.dataObjects:
+			if self.dataObjects[year][mon-1] is not None:
+				self.dataObjects[year][mon-1][0].end()
+				self.dataObjects[year][mon-1] = [None, None]
+
+	def setLatLon(self, year=None, month=None):
+		f, r = self.getDataObj(self.firstObservation.year, self.firstObservation.month)
+		self.lat = f.select('Latitude')
+		self.latvals = self.lat.get()[:,0]
+		self.lon = f.select('Longitude')
+		self.lonvals = [cLon(v) for v in self.lon.get()[0,:]]
+		self.seaLandMask = f.select('LandSeaMask').get()
+		return self.latvals, self.lonvals
+
+
+	def latlon2latIndlonInd(self, lat, lon):
+		"""
+		считает индексы ячеек из координат
+		!Внимание! индексы ячеек разные для разных моделей(сеток) разные
+		"""
+		try:
+			if lon<0: lon += 360
+			lonInd=self.lonvals.index(lon)
+			latInd=self.latvals.index(lat)
+		except ValueError:
+			print 'Valid lat indexes are -'
+			print self.latvals
+			print 'Valid lon indexes are -'
+			print self.lonvals
+			raise
+		return latInd, lonInd
+
+	def __specifyInd__(self, item):
+		try:
+			latInd, lonInd = item
+		except TypeError:
+			latInd, lonInd = self.ind2latindlonind(item)
+		except:
+			print item
+			raise
+		return latInd, lonInd
+
+	def latlonInd2ind(self, latInd, lonInd):
+		"""
+		Расчитывает индекс ячейки из индексов по x,y
+		"""
+		return int(latInd*len(self.lonvals)+lonInd)
+
+	def ind2latindlonind(self, ind):
+		""" переводит номер узла в индексы массива """
+		latInd=int(ind/len(self.lonvals))
+		lonInd=ind - latInd*len(self.lonvals)
+		return latInd, lonInd
+
+	def getNearestPoint(self, lat, lon):
+		"""
+		считает индексы ячеек из координат
+		!Внимание! индексы ячеек разные для разных моделей(сеток) разные
+		"""
+		if lon<0: lon += 360
+		lonlist=[[i,abs(v-lon)] for i,v in enumerate(self.lonvals)]
+		lonlist.sort(key=lambda a: a[1])
+		lonInd=lonlist[0][0]
+		latlist=[[i,abs(v-lat)] for i,v in enumerate(self.latvals)]
+		latlist.sort(key=lambda a: a[1])
+		latInd=latlist[0][0]
+		return self.latlonInd2ind(latInd, lonInd)
+
+	def getNeighboring(self, item, lev=1):
+		latInd, lonInd = self.__specifyInd__(item)
+		vals = [[latInd+1,lonInd-1],[latInd+1,lonInd],[latInd+1,lonInd+1],[latInd,lonInd-1],[latInd,lonInd],
+				[latInd,lonInd+1],[latInd-1,lonInd-1],[latInd-1,lonInd],[latInd+1,lonInd-1]]
+		r = [self.latlonInd2ind(*v) for v in vals]
+		if lev>1:
+			for i in range(1,lev):
+				tmp = set()
+				for ind in r:
+					tmp.union(set(self.getNeighboring(ind)))
+				r=list(set(r).union(tmp))
+		return r
+
+	def getPoint(self, item):
+		latInd, lonInd = self.__specifyInd__(item)
+		meta={'ind':self.latlonInd2ind(latInd, lonInd), 'lat':self.latvals[latInd], 'lon':self.lonvals[lonInd],
+			  'dt':self.dt}
+		gdat=[]
+		for year in range(self.firstObservation.year, self.yMax):
+			ln=[-999.99]*12
+			for mon in range(1,13):
+				f, r = self.getDataObj(year,mon)
+				if r is not None:
+					v=r[self.lev-1,latInd,lonInd]
+					if v < 0 :continue
+					ln[mon-1]=float(v * 10 ** 9)
+			gdat.append([year,ln])
+		return createCliDat(meta=meta, gdat=gdat, fillValue=-999.99)
+
+	def getAllMetaDict(self):
+		res=dict()
+		ind=0
+		for lat,lon in itertools.product(self.latvals,self.lonvals):
+			res[ind]={'ind':ind, 'lat':lat, 'lon':lon, 'dt':self.dt}
+			ind+=1
+		return res
