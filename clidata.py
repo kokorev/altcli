@@ -487,9 +487,14 @@ class cliData:
 		for y in range(yMin,yMax+1):
 			yobj=self[y]
 			f = getattr(yobj, functName)
-			try:
-				r=f(*params)
-			except TypeError:
+			if hasattr(f, '__call__'):
+				try:
+					r=f(*params)
+				except:
+					res.append(None)
+					time.append(yobj.year)
+					continue
+			else:
 				r=f
 			if converter is not None: r=converter(r)
 			res.append(r)
@@ -988,6 +993,8 @@ class temp_yearData(yearData):
 		#todo: уточнить логику работы в случаях когда точки перехода встречаются не каждый год
 		from datetime import datetime as dt
 		from calendar import isleap
+		if self.missedMonth>0:
+			return None,None
 		if c=='GT':
 			ct=lambda v: v>x
 			# ce=lambda v: v>=x
