@@ -1,11 +1,10 @@
 ﻿# coding=utf-8
 """
-Custom types for monthly climate timeseries
+Abstract class for monthly climate data timeseries in a point (ie weather station)
 """
 __author__ = 'Vasily Kokorev'
 __email__ = 'vasilykokorev@gmail.com'
 
-from common import timeit
 from common import elSynom
 import clicomp as cc
 import numpy as np
@@ -21,7 +20,7 @@ logging.basicConfig(format = u'%(filename)s[LINE:%(lineno)d]# %(levelname)-8s [%
 
 def getCacheId(method, *args, **kwargs):
 	"""
-	decorator that implement caching for cliData
+	Function that calculates unic index for method call based on method name and parameters. Used for @cache
 	"""
 	dId = method.__name__ + '--'
 	for s in args: dId += str(s) + ','
@@ -30,7 +29,7 @@ def getCacheId(method, *args, **kwargs):
 
 def cache(method):
 	"""
-	Декоратор. То же что и saveRes, но кеширующий
+	Decorator that implement caching for cliData
 	"""
 	@functools.wraps(method)
 	def wrapper(self, *args, **kwargs):
@@ -56,31 +55,6 @@ def cache(method):
 		return result
 	return wrapper
 
-# def saveRes(method):
-# 	"""
-# 	deprecated version of @cache
-# 	"""
-# 	@functools.wraps(method)
-# 	def wrapper(self, *args, **kwargs):
-# 		dictId = getSaveResId(method, *args, **kwargs)
-# 		result = method(self, *args, **kwargs)
-# 		if self.__name__ == 'yearData':
-# 			# если функцию вызвал объект yearData не имеющий родителся
-# 			# то сохраняем результат в self.res и на этом заканчиваем
-# 			# если self имеет родителя
-# 			# то сохраняем результат в self.res и в self.parent.res
-# 			# при этом во втором случае ключ словаря имеет приставку 'year-%i-' % self.year
-# 			if self.parent == None:
-# 				self.res.update({dictId:result})
-# 			else:
-# 				self.res.update({dictId:result})
-# 				dictId = 'year-%i-' % self.year + dictId
-# 				self.parent.res.update({dictId:result})
-# 		else:
-# 			self.res.update({dictId:result})
-# 		return result
-# 	return wrapper
-
 
 class noDataException(Exception):
 	"""
@@ -97,10 +71,11 @@ class noDataException(Exception):
 
 class cliData:
 	"""
-	Custom data type for monthly climate data in a point
+	Monthly timeseries in a point
 	"""
 	def __init__(self, meta, gdat, fillValue=None):
 		"""
+		Warning! for general use cliData object should be created with clidataSet.createCliDat() function.
 		meta - basic metadata dictionary, should contain at least 'dt' and 'ind' keys for climate parameter and station index
 		'ind' could be None for region mean data etc
 		'lat' and 'lon' parameters are recommended
@@ -108,7 +83,6 @@ class cliData:
 		gdat - monthly data
 		gdat=[[year, [val1, val2, ..., val12]], [...]]
 		fillValue - missing data flag for gdat array
-		cfg=config() - exist mostly for backwards compatibility reasons
 		"""
 		#todo: принимать numpy array в качестве gdat
 		self.__name__ = 'cliData'
@@ -254,9 +228,7 @@ class cliData:
 
 	def __str__(self):
 		"""
-		Функция конвертации в строку. В заголовке записываються номер и координаты станции, год за который записаны данные
-		Далее после разделитьеля идут данные на доной на каждой строке записываеться номер годи а данные за 12 месяцев
-		Разделитель - табуляция
+		Simple textual representation of the data
 		"""
 		resStr = "Ind:" + str(self.meta['ind']) + "\r"
 		resStr += "lat:" + str(self.meta["lat"]) + "\r"
@@ -269,18 +241,25 @@ class cliData:
 
 
 	def __len__(self):
-		""" len(cliData) возвращает количетво лет (в т.ч. пустые) """
+		"""
+		len(cliData) return number of years including years with fill values only
+		return: int
+		"""
 		return len(self.yList)
 
 
 	def __contains__(self, item):
-		""" обработка оператора in """
+		"""
+		In operater. Return whether the year is in the instance
+		return: bool
+		"""
 		return item in self.yList
 
 
 	def eq(self, other):
 		"""
-		возвращает self==other (аналог __eq__)
+		test whether to objects are the same.
+		Should become __eq__ once stable.
 		"""
 		if self.yList != other.yList:
 			r=False
@@ -293,24 +272,34 @@ class cliData:
 
 	def timeMerge(self, other, breakingPoint=None, useSelfIfOverlap=None):
 		"""
-		Обединяет два объекта в один. Методанные копируются из объекта self
-		@param other: cliData object
-		@return:
+		merge two instance sorted by years.
+		other - cliData instance to merge with self
+		Methode provides two strategies for dealing with overlapping years.
+		breakigPoint - int, year
+		Implementing the first strategy - the data from the bigger yMin value will be used starting this year
+		useSelfIfOverlap - bool
+		Implementing the second strategy is to use Self data as much or as little as possible
+		One of this properties should be not None
+		Return: cliData instance
 		"""
 		ml=self.yList+other.yList
-		gdat1=[[y,list(v.filled(-999.99))] for y,v in zip(self.yList,self.data)]
-		gdat2=[[y,list(v.filled(-999.99))] for y,v in zip(other.yList,other.data)]
-		if gdat1[0][0]>gdat2[0][0]:
-			gdat1,gdat2=gdat2,gdat1
+		gd=[
+			[[y,list(v.filled(-999.99))] for y,v in zip(self.yList,self.data)],
+			[[y,list(v.filled(-999.99))] for y,v in zip(other.yList,other.data)]
+			]
+		selfGdInd=0
+		gdInd1, gdInd2 = 0, 1
+		if gd[0][0][0]>gd[1][0][0]:
+			gdInd1, gdInd2 = 1, 0
 		if useSelfIfOverlap is not None and breakingPoint is not None:
 			raise ValueError, 'breakingPoint and useSelfIfOverlap could not be used together'
 		if useSelfIfOverlap is True:
-			breakingPoint=gdat1[-1][0]+1
+			breakingPoint=gd[selfGdInd][-1][0]+1
 		elif useSelfIfOverlap is False:
-			breakingPoint=gdat2[0][0]
+			breakingPoint=gd[1 if selfGdInd==0 else 0][0][0]
 		if breakingPoint is not None:
-			gdat1=[v for v in gdat1 if v[0]<breakingPoint]
-			gdat2=[v for v in gdat2 if v[0]>=breakingPoint]
+			gdat1=[v for v in gd[gdInd1] if v[0]<breakingPoint]
+			gdat2=[v for v in gd[gdInd2] if v[0]>=breakingPoint]
 		gdat=gdat1+gdat2
 		newYlist=[v[0] for v in gdat]
 		assert len(set(newYlist))==len(newYlist), 'duplicating years'
@@ -336,7 +325,7 @@ class cliData:
 	@cache
 	def datapass(self):
 		"""
-		percent of missing data
+		Percent of data that is  missing
 		"""
 		obs=np.ma.count(self.data)
 		passes=np.ma.count_masked(self.data)
@@ -345,9 +334,10 @@ class cliData:
 
 	def _setPeriod(self, yMin, yMax):
 		"""
+		Set user provided yMin and yMax to match available data
 		@param yMin:
 		@param yMax:
-		@return:
+		@return: new yMin and yMax
 		"""
 		userYMin,userYMax=yMin,yMax
 		yMin = self.meta['yMin'] if (yMin == -1) or (yMin < self.meta['yMin']) else yMin
@@ -365,6 +355,7 @@ class cliData:
 
 	def getSeasonsData(self,seasons):
 		"""
+		return timeseries for each season. Seasons defined in following format :
 		@param seasons: {'seasonName':[monthNumber1, monthNumber2, ...], 'seasonName2'}
 		monthNumber [-12,0), (0,+24]
 		monthNumber=1 January
@@ -416,13 +407,15 @@ class cliData:
 
 	def setSeasons(self,seasons):
 		"""	alias for backwards compatibility """
+		logging.warning("cliData.setSeasons is depricated, please use getSeasonsData insted")
 		self.getSeasonsData(seasons)
 
 
 	@cache
 	def _calcSeasonData(self,mlist):
 		"""
-		Возвращает значения за сезон (маскированный) индексы в котором соответствуют self.timeInds
+		technical function for getSeasonsData. Take the season definition as list of month numbers
+		Returns masked array of values for this months with self.timeInds as a time axis
 		"""
 		seasIndList=[]
 		iStart,iStop=0,len(self.data)
@@ -453,7 +446,9 @@ class cliData:
 
 
 	def getSeasonsSeries(self, seasons):
-		""" return mean season value for each year (sum if precip)
+		"""
+		return mean season value for each year (sum if precip)
+		return: dict {'season name': float}
 		"""
 		dat=self.getSeasonsData(seasons)
 		res=dict()
@@ -474,7 +469,7 @@ class cliData:
 
 	def getParamSeries(self,functName, params=[], yMin=-1, yMax=-1, converter=None):
 		"""
-		return function value for each year
+		return  value of the defined parameter for each year
 		@param functName: yearData method name
 		@param params:  yearData method parameters
 		@param yMin: start from year
