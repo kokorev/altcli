@@ -18,6 +18,26 @@ def cLon(lon):
 		lon=360+lon
 	return lon
 
+def dms2dd(degrees, minutes, seconds, direction):
+	"""
+	Converts DMS coordinates to decimal degrees
+	http://en.proft.me/2015/09/20/converting-latitude-and-longitude-decimal-values-p/
+	"""
+	dd = float(degrees) + float(minutes)/60 + float(seconds)/(60*60);
+	if direction == 'S' or direction == 'W':
+		dd *= -1
+	return dd;
+
+def dd2dms(deg):
+	"""
+	Converts decimal degrees to DMS coordinates
+	http://en.proft.me/2015/09/20/converting-latitude-and-longitude-decimal-values-p/
+	"""
+	d = int(deg)
+	md = abs(deg - d) * 60
+	m = int(md)
+	sd = (md - m) * 60
+	return [d, m, sd]
 
 def calcDist(lat1, lon1, lat2, lon2):
 	"""
